@@ -941,6 +941,10 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 
 	consoleArgs := incus.InstanceConsoleArgs{
 		Terminal:          wsWrapper,
+		Control: func(conn *websocket.Conn) {
+			// Dummy control function required for containers
+			// In the future, resize events can be handled here
+		},
 		ConsoleDisconnect: disconnectChan,
 	}
 
