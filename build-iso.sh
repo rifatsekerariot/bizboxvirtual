@@ -130,14 +130,20 @@ autoinstall:
       curtin in-target -- systemctl enable bizbox-mvp.service
 EOF
 
-# 7. Extract and modify grub.cfg from the original ISO
-echo "Modifying bootloader configuration..."
-xorriso -osirrox on -indev "$ORIGINAL_ISO" -extract /boot/grub/grub.cfg "$TEMP_DIR/grub.cfg"
-chmod +w "$TEMP_DIR/grub.cfg"
+# 7. Create custom grub.cfg
+echo "Creating custom bootloader configuration..."
+cat <<'GRUB' > "$TEMP_DIR/grub.cfg"
+set timeout=1
+set default=0
 
-sed -i 's/set default="0"/set default="0"\nset timeout=1/' "$TEMP_DIR/grub.cfg"
-sed -i 's/menuentry "Ubuntu Server"/menuentry "Autoinstall BizBox Server"/' "$TEMP_DIR/grub.cfg"
-sed -i 's/---/autoinstall ds=nocloud;s=\/cdrom\/nocloud\/ ---/' "$TEMP_DIR/grub.cfg"
+loadfont unicode
+
+menuentry "BizBox Installer by ARIOT" {
+	set gfxpayload=keep
+	linux	/casper/vmlinuz quiet autoinstall ds=nocloud;s=/cdrom/nocloud/ ---
+	initrd	/casper/initrd
+}
+GRUB
 
 # 8. Remaster the ISO retaining all original boot capabilities (hybrid MBR/GPT + EFI)
 echo "Remastering bootable ISO..."
