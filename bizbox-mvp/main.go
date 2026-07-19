@@ -1155,7 +1155,14 @@ func main() {
 		}
 
 		fmt.Printf("VM '%s' oluşturuluyor (İmaj: %s, CPU: %d, RAM: %dGiB)...\n", *nameFlag, *imageFlag, *cpuFlag, *ramFlag)
-		err = CreateVM(*nameFlag, *imageFlag, api.InstanceTypeVM, *cpuFlag, *ramFlag)
+		devices := map[string]map[string]string{}
+		devices["eth0"] = map[string]string{
+			"name": "eth0",
+			"type": "nic",
+			"nictype": "bridged",
+			"parent": "br-int",
+		}
+		err = CreateVM(*nameFlag, *imageFlag, api.InstanceTypeVM, *cpuFlag, *ramFlag, devices)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Hata: VM oluşturulurken hata oluştu. Detay: %v\n", err)
 			os.Exit(1)
