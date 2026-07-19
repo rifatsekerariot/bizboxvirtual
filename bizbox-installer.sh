@@ -252,7 +252,7 @@ if [ "$IS_UEFI" -eq 1 ]; then
     --target=x86_64-efi \
     --efi-directory=/boot/efi \
     --bootloader-id=BizBox \
-    --recheck
+    --recheck || true
 
   # Ayrica removable path kopyasini da garantiye al (VirtualBox/bazi anakartlar icin)
   chroot /target grub-install \

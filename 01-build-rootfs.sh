@@ -87,7 +87,8 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
     rsync \
     iproute2 \
     openssh-server \
-    grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed
+    efibootmgr \
+    grub-pc-bin grub-efi-amd64 grub-efi-amd64-signed shim-signed
   apt-get clean
   rm -rf /var/lib/apt/lists/*
 "
