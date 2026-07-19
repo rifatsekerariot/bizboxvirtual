@@ -33,18 +33,29 @@ mksquashfs "$ROOTFS_DIR" "$ISO_TREE/casper/filesystem.squashfs" \
 printf "%s" "$(du -sx --block-size=1 "$ROOTFS_DIR" | cut -f1)" > "$ISO_TREE/casper/filesystem.size"
 
 echo "====== [3/4] Writing grub.cfg ======"
+# GRUB'ın dosyayı kesin bulabilmesi için standart yolları oluşturuyoruz
+mkdir -p "$ISO_TREE/boot/grub"
+mkdir -p "$ISO_TREE/EFI/BOOT"
+
 cat > "$ISO_TREE/boot/grub/grub.cfg" <<'GRUB'
 set timeout=3
 set default=0
 
 menuentry "BizBox Installer by ARIOT" {
+    # ISO'nun etiketine (volid) göre kök dizini bulmasını sağlıyoruz
+    search --no-floppy --set=root --volid BIZBOX
+    
     linux /casper/vmlinuz boot=casper quiet ---
     initrd /casper/initrd
 }
 GRUB
 
+# UEFI modunun doğrudan kök dizinde grub.cfg arama ihtimaline karşı kopyalıyoruz
+cp "$ISO_TREE/boot/grub/grub.cfg" "$ISO_TREE/grub.cfg"
+
 echo "====== [4/4] Building hybrid BIOS+UEFI ISO ======"
 rm -f "$CUSTOM_ISO"
+# -- -volid BIZBOX parametresi yukarıdaki search komutunun ISO'yu tanımasını sağlar
 grub-mkrescue -o "$CUSTOM_ISO" "$ISO_TREE" -- -volid BIZBOX 2>&1 | grep -v "^xorriso :" || true
 
 rm -rf "$ISO_TREE"

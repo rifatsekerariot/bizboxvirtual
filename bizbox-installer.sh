@@ -185,7 +185,8 @@ ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 echo -e "\t    Kurulum durumu: BOOTLOADER KURULUYOR..."
 
 if [ "$IS_UEFI" -eq 1 ]; then
-  chroot /target grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=BizBox --recheck
+  # --no-nvram ve --removable parametrelerini ekleyerek GRUB'ı diske taşınabilir modda yazıyoruz
+  chroot /target grub-install --target=x86_64-efi --efi-directory=/boot/efi --no-nvram --removable --recheck
 else
   chroot /target grub-install --target=i386-pc --recheck "/dev/$TARGET_DISK"
 fi
