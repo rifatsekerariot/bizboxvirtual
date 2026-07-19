@@ -88,6 +88,7 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
     iproute2 \
     openssh-server \
     efibootmgr \
+    systemd-resolved dnsmasq-base apparmor \
     grub-pc-bin grub-efi-amd64 grub-efi-amd64-signed shim-signed
   apt-get clean
   rm -rf /var/lib/apt/lists/*
