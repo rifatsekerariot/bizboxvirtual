@@ -104,6 +104,9 @@ autoinstall:
       cp -r /cdrom/payload/* /target/opt/bizbox/
       chmod +x /target/opt/bizbox/bizbox-mvp
 
+      # Forcefully set target OS admin password to 'admin' to bypass YAML hash issues
+      echo "admin:admin" | curtin in-target -- chpasswd
+
       # Configure ZFS Storage Pool on target (Destroy old pools and wipe disks for clean reinstall)
       # Find OS disk partition (active on /target)
       OS_DISK=$(df /target | tail -1 | awk '{print $1}' | grep -o '/dev/[a-zA-Z0-9]*' | head -n1)
