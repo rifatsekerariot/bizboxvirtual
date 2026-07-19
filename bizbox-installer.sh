@@ -48,15 +48,30 @@ done
 mapfile -t CANDIDATE_DISKS < <(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}')
 
 TARGET_DISK=""
-BEST_SIZE=0
+MIN_SIZE=$(( 10 * 1024 * 1024 * 1024 )) # 10 GB
+BEST_SIZE=999999999999999999
 for name in "${CANDIDATE_DISKS[@]}"; do
   [ "$name" = "$LIVE_SRC_DISK" ] && continue
   size_bytes=$(blockdev --getsize64 "/dev/$name" 2>/dev/null || echo 0)
-  if [ "$size_bytes" -gt "$BEST_SIZE" ]; then
+  # OS diski en kucuk disk olmali (ama en az 10GB olmali)
+  if [ "$size_bytes" -ge "$MIN_SIZE" ] && [ "$size_bytes" -lt "$BEST_SIZE" ]; then
     BEST_SIZE=$size_bytes
     TARGET_DISK="$name"
   fi
 done
+
+# Eger hic disk bulunamadiysa, belki 10GB alti disk vardir, sartsiz en kucugu secelim
+if [ -z "$TARGET_DISK" ]; then
+  BEST_SIZE=999999999999999999
+  for name in "${CANDIDATE_DISKS[@]}"; do
+    [ "$name" = "$LIVE_SRC_DISK" ] && continue
+    size_bytes=$(blockdev --getsize64 "/dev/$name" 2>/dev/null || echo 0)
+    if [ "$size_bytes" -lt "$BEST_SIZE" ]; then
+      BEST_SIZE=$size_bytes
+      TARGET_DISK="$name"
+    fi
+  done
+fi
 
 if [ -z "$TARGET_DISK" ]; then
   echo -e "\t    HATA: Kurulum icin uygun disk bulunamadi!"
