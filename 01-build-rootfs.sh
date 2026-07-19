@@ -61,6 +61,7 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
   apt-get install -y --no-install-recommends \
     linux-image-generic \
     casper \
+    udev \
     systemd-sysv \
     network-manager \
     sudo \
@@ -71,6 +72,7 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
     iptables \
     curl \
     parted \
+    gdisk \
     dosfstools \
     rsync \
     grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed
@@ -120,7 +122,8 @@ cat > "$ROOTFS_DIR/etc/systemd/system/bizbox-installer.service" <<'SYS'
 [Unit]
 Description=BizBox first-boot installer (live media only)
 DefaultDependencies=no
-After=local-fs.target
+After=local-fs.target systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service
+Wants=systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service
 Before=getty@tty1.service
 Conflicts=getty@tty1.service
 

@@ -30,6 +30,16 @@ fi
 echo -e "\t    Sanal hypervisor sistemi kuruluyor, lutfen bekleyin..."
 echo -e "\t    [Bu islem birkac dakika surebilir]\n"
 
+# Make sure udev has actually enumerated every block device and processed
+# its queue before we touch any disk. zpool create waits up to 30s for udev
+# to mark a newly written partition "ready"; if udev hasn't run yet (or
+# hasn't finished its initial coldplug), that wait times out with errno 19
+# ("cannot label ... failed to detect device partitions"). The systemd unit
+# ordering (After=systemd-udev-settle.service) should already guarantee
+# this, but we also do it explicitly here as a second safety net.
+udevadm trigger --type=devices --action=add 2>/dev/null || true
+udevadm settle --timeout=30 || true
+
 # ---------------------------------------------------------------------------
 # 1. Identify disks. Skip whatever the live medium itself is booted from.
 # ---------------------------------------------------------------------------
@@ -75,8 +85,31 @@ for line in "${CANDIDATE_DISKS[@]}"; do
 done
 
 echo -e "\t    Kurulum durumu: DISK TEMIZLENIYOR (/dev/$TARGET_DISK)..."
-wipefs -a -f "/dev/$TARGET_DISK" || true
-dd if=/dev/zero of="/dev/$TARGET_DISK" bs=1M count=50 conv=fdatasync || true
+
+# Thoroughly wipe a disk: clears filesystem/partition signatures AND both
+# the primary and backup GPT headers (the backup GPT sits in the last
+# sectors of the disk - a plain "dd the first 50MB" never touches it, which
+# previously left zpool unable to re-label the disk: "cannot label ...
+# failed to detect device partitions"). Also forces the kernel to re-read
+# the (now empty) partition table before anything tries to use the disk.
+wipe_disk() {
+  local disk="$1"
+  wipefs -a -f "/dev/$disk" || true
+  sgdisk --zap-all "/dev/$disk" >/dev/null 2>&1 || true
+  dd if=/dev/zero of="/dev/$disk" bs=1M count=50 conv=fdatasync || true
+  local size_bytes size_mb seek_mb
+  size_bytes=$(blockdev --getsize64 "/dev/$disk" 2>/dev/null || echo 0)
+  size_mb=$(( size_bytes / 1024 / 1024 ))
+  seek_mb=$(( size_mb - 50 ))
+  if [ "$seek_mb" -gt 0 ]; then
+    dd if=/dev/zero of="/dev/$disk" bs=1M count=50 seek="$seek_mb" conv=fdatasync || true
+  fi
+  partprobe "/dev/$disk" 2>/dev/null || true
+  blockdev --rereadpt "/dev/$disk" 2>/dev/null || true
+  udevadm settle || true
+}
+
+wipe_disk "$TARGET_DISK"
 
 # ---------------------------------------------------------------------------
 # 2. Partition: ESP (if UEFI) + root. Falls back to BIOS-boot partition
@@ -168,11 +201,42 @@ rm -f /target/usr/local/sbin/bizbox-installer.sh
 
 echo -e "\t    Kurulum durumu: ZFS DEPOLAMA ALANI YAPILANDIRILIYOR..."
 
+# Return the correct partition device name for a disk + partition number,
+# accounting for nvme-style disks (nvme0n1 -> nvme0n1p1) vs sd-style (sda -> sda1).
+part_name() {
+  local disk="$1" num="$2"
+  if [[ "$disk" =~ [0-9]$ ]]; then
+    echo "${disk}p${num}"
+  else
+    echo "${disk}${num}"
+  fi
+}
+
 chroot /target zpool destroy -f rft 2>/dev/null || true
 if [ -n "$SECONDARY_DISK" ]; then
-  wipefs -a -f "/dev/$SECONDARY_DISK" || true
-  dd if=/dev/zero of="/dev/$SECONDARY_DISK" bs=1M count=50 conv=fdatasync || true
-  chroot /target zpool create -f rft "/dev/$SECONDARY_DISK"
+  wipe_disk "$SECONDARY_DISK"
+
+  # Pre-partition ourselves (single partition spanning the whole disk) so
+  # zpool is handed a partition, not a raw disk. Letting zpool operate on a
+  # raw disk makes it create its own GPT + partition internally, which
+  # depends on udev creating the new partition node in time - this races
+  # and fails in minimal live environments ("cannot label ... failed to
+  # detect device partitions"). Doing it ourselves + explicitly settling
+  # avoids that race entirely.
+  parted -s "/dev/$SECONDARY_DISK" mklabel gpt mkpart primary 0% 100%
+  partprobe "/dev/$SECONDARY_DISK" 2>/dev/null || true
+  udevadm settle || true
+  sleep 2
+
+  SECONDARY_PART="/dev/$(part_name "$SECONDARY_DISK" 1)"
+  # Wait for the partition device node to actually show up (belt-and-braces
+  # on top of udevadm settle - some VM disk backends are still slower).
+  for i in $(seq 1 15); do
+    [ -b "$SECONDARY_PART" ] && break
+    sleep 1
+  done
+
+  chroot /target zpool create -f rft "$SECONDARY_PART"
 else
   chroot /target truncate -s 20G /var/lib/bizbox_zfs.img
   chroot /target zpool create -f rft /var/lib/bizbox_zfs.img
