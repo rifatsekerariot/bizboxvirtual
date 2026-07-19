@@ -99,6 +99,8 @@ cat > "$ROOTFS_DIR/etc/systemd/system/bizbox-mvp.service" <<'SYS'
 [Unit]
 Description=BizBox Hypervisor Manager
 After=network.target incus.service openvswitch-switch.service
+# Live boot sirasinda calismasin (sadece kurulu sistemde aktif olsun)
+ConditionKernelCommandLine=!boot=casper
 
 [Service]
 Type=simple

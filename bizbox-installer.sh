@@ -173,31 +173,35 @@ mount -t proc proc /target/proc
 mount -t sysfs sysfs /target/sys
 
 # ---------------------------------------------------------------------------
-# 3b. Kernel ve initrd: squashfs /boot icermez, onlari /casper/ den kopyala
+# 3b. Kernel ve initrd: squashfs /boot icermez, onlari live medium'dan kopyala
+# Live sistem acildiginda ISO /cdrom, /run/live/medium veya /media altinda
+# mount edilir - dogru konumu dinamik olarak buluyoruz.
 # ---------------------------------------------------------------------------
 mkdir -p /target/boot
 
 # /lib/modules altindan versiyon numarasini bul
-KVER=$(ls /target/lib/modules/ 2>/dev/null | sort -V | tail -n1 || ls /lib/modules/ | sort -V | tail -n1)
-if [ -z "$KVER" ]; then
-  KVER="$(uname -r)"
-fi
+KVER=$(ls /target/lib/modules/ 2>/dev/null | sort -V | tail -n1 || ls /lib/modules/ 2>/dev/null | sort -V | tail -n1 || uname -r)
 
 KERNEL_FILE="vmlinuz-${KVER}"
 INITRD_FILE="initrd.img-${KVER}"
 
-# Onceden kopyalanmamissa /casper/ den al
-if [ ! -f "/target/boot/$KERNEL_FILE" ]; then
-  cp /casper/vmlinuz "/target/boot/$KERNEL_FILE"
-fi
-
-# initrd: casper/initrd yoksa initramfs-tools ile olustur
-if [ ! -f "/target/boot/$INITRD_FILE" ]; then
-  if [ -f /casper/initrd ]; then
-    cp /casper/initrd "/target/boot/$INITRD_FILE"
-  else
-    chroot /target update-initramfs -c -k "$KVER" || true
+# Live medium mount noktasini bul
+LIVE_MEDIUM=""
+for candidate in /cdrom /run/live/medium /media/cdrom /media/cdrom0; do
+  if [ -f "${candidate}/casper/vmlinuz" ]; then
+    LIVE_MEDIUM="$candidate"
+    break
   fi
+done
+
+if [ -z "$LIVE_MEDIUM" ]; then
+  echo "UYARI: Live medium bulunamadi, vmlinuz/initrd kopyalanamayacak!"
+  # Son care: initramfs olustur
+  chroot /target update-initramfs -c -k "$KVER" 2>/dev/null || true
+else
+  echo "DEBUG: Live medium: $LIVE_MEDIUM"
+  [ ! -f "/target/boot/$KERNEL_FILE" ] && cp "${LIVE_MEDIUM}/casper/vmlinuz" "/target/boot/$KERNEL_FILE"
+  [ ! -f "/target/boot/$INITRD_FILE" ] && cp "${LIVE_MEDIUM}/casper/initrd" "/target/boot/$INITRD_FILE"
 fi
 
 echo "DEBUG: Kernel=$KERNEL_FILE  Initrd=$INITRD_FILE"
