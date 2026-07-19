@@ -883,7 +883,7 @@ func handleGetConsole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := templates.ExecuteTemplate(w, "console.html", data)
+	err = templates.ExecuteTemplate(w, "console.html", data)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Şablon oluşturma hatası: %v", err), http.StatusInternalServerError)
 	}
@@ -926,7 +926,7 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	consoleType := "vga"
-	if inst.Type == api.InstanceTypeContainer {
+	if string(inst.Type) == string(api.InstanceTypeContainer) {
 		consoleType = "console"
 	}
 
