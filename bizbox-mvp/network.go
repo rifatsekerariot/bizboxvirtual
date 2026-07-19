@@ -343,8 +343,8 @@ func handleCreateSegmentAPI(w http.ResponseWriter, r *http.Request) {
 			_ = importStrConv
 			var v int
 			fmt.Sscanf(vStrTrim, "%d", &v)
-			if v < 2 || v > 4094 {
-				http.Error(w, "Geçersiz VLAN ID. Lütfen 2-4094 arası bir değer girin.", http.StatusBadRequest)
+			if v < 1 || v > 4094 {
+				http.Error(w, "Geçersiz VLAN ID. Lütfen 1-4094 arası bir değer girin.", http.StatusBadRequest)
 				return
 			}
 			
