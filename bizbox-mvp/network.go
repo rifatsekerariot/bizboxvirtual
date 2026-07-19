@@ -130,6 +130,50 @@ func AssignVMToSegment(vmName string, segmentName string) error {
 	return nil
 }
 
+// DeleteSegment deletes a segment, un-tags its VMs, and removes OVS flow rules
+func DeleteSegment(name string) error {
+	var vlanID int
+	err := db.QueryRow("SELECT vlan_id FROM network_segments WHERE name = ?", name).Scan(&vlanID)
+	if err != nil {
+		return fmt.Errorf("segment bulunamadı: %w", err)
+	}
+
+	// Retrieve VMs assigned to this segment to remove their tags
+	rows, err := db.Query("SELECT vm_name FROM network_segment_vms WHERE segment_name = ?", name)
+	if err == nil {
+		var vms []string
+		for rows.Next() {
+			var vm string
+			if err := rows.Scan(&vm); err == nil {
+				vms = append(vms, vm)
+			}
+		}
+		rows.Close()
+
+		for _, vm := range vms {
+			portName := fmt.Sprintf("veth-%s", vm)
+			// Remove the tag
+			cmd := exec.Command("ovs-vsctl", "remove", "port", portName, "tag", fmt.Sprintf("%d", vlanID))
+			_ = cmd.Run() // ignore error, port might not exist
+		}
+	}
+
+	// Delete from database (network_segment_vms cascades if configured, but let's be explicit)
+	_, _ = db.Exec("DELETE FROM network_segment_vms WHERE segment_name = ?", name)
+	_, err = db.Exec("DELETE FROM network_segments WHERE name = ?", name)
+	if err != nil {
+		return fmt.Errorf("segment silinirken veritabanı hatası: %w", err)
+	}
+
+	// Remove OVS flow rules
+	_ = exec.Command("ovs-ofctl", "del-flows", "br-int", fmt.Sprintf("dl_vlan=%d", vlanID)).Run()
+
+	// Also remove QoS rule if any
+	_ = DeleteQoSRule(name)
+
+	return nil
+}
+
 // createOVSSegment wraps OVS command line actions and applies default security flow rules
 func createOVSSegment(name string, vlanID int) error {
 	log.Printf("[OVS] Segment oluşturuluyor: %s (VLAN ID: %d)", name, vlanID)
@@ -339,5 +383,32 @@ func handleAssignVMAPI(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"vm":      vmName,
 		"segment": segmentName,
+	})
+}
+
+// DELETE /api/network/segments/{name}
+func handleDeleteSegmentAPI(w http.ResponseWriter, r *http.Request) {
+	segmentName := r.PathValue("name")
+	if segmentName == "" {
+		http.Error(w, "Segment ismi eksik", http.StatusBadRequest)
+		return
+	}
+
+	err := DeleteSegment(segmentName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Segment silinemedi: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", "segments-updated")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
 	})
 }

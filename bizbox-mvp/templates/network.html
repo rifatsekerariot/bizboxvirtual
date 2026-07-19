@@ -27,7 +27,12 @@
         <div>
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
             <span style="font-weight: 600; font-size: 15px; color: var(--text-primary);">{{.Name}}</span>
-            <span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600;">VLAN {{.VlanID}}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600;">VLAN {{.VlanID}}</span>
+              <button type="button" style="background: transparent; border: 1px solid var(--danger-color); color: var(--danger-color); border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Segmenti Sil" hx-delete="/api/network/segments/{{.Name}}" hx-confirm="'{{.Name}}' ağ segmentini silmek istediğinize emin misiniz? Atanmış makinelerin ağ bağlantısı kopabilir!">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+              </button>
+            </div>
           </div>
           
           <div style="margin-top: 10px;">

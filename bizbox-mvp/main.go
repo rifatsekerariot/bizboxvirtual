@@ -1102,6 +1102,7 @@ func main() {
 		mux.HandleFunc("GET /api/network/segments", handleGetSegments)
 		mux.HandleFunc("POST /api/network/segments", handleCreateSegmentAPI)
 		mux.HandleFunc("POST /api/network/segments/{name}/assign", handleAssignVMAPI)
+		mux.HandleFunc("DELETE /api/network/segments/{name}", handleDeleteSegmentAPI)
 
 		// Traffic Prioritization (QoS) endpoints
 		mux.HandleFunc("GET /api/qos/rules", handleGetQoSRules)
