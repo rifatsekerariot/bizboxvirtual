@@ -12,9 +12,9 @@ fi
 UBUNTU_ISO_URL="https://releases.ubuntu.com/24.04/$LATEST_ISO_FILE"
 ORIGINAL_ISO="$LATEST_ISO_FILE"
 CUSTOM_ISO="bizbox-installer.iso"
-BUILD_DIR="/tmp/bizbox-iso-build"
-ISO_MOUNT_DIR="/tmp/bizbox-iso-mount"
-ISO_FILES_DIR="/tmp/bizbox-iso-files"
+BUILD_DIR="./iso-build"
+ISO_MOUNT_DIR="./iso-mount"
+ISO_FILES_DIR="./iso-files"
 
 echo "====== Starting BizBox ISO Build ======"
 
