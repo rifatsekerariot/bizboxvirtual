@@ -20,7 +20,6 @@ apt-get install -y \
   incus-client \
   openvswitch-switch \
   zfsutils-linux \
-  golang-go \
   sqlite3 \
   tc \
   iptables \
@@ -53,9 +52,13 @@ if ! ovs-vsctl show | grep -q "br-int"; then
   echo "OVS integration bridge 'br-int' created."
 fi
 
-# 5. Build BizBox Binary
-echo "Building BizBox Go application..."
-go build -o bizbox-mvp
+# 5. Check BizBox Binary
+echo "Checking pre-compiled BizBox Go application..."
+if [ ! -f "bizbox-mvp" ]; then
+  echo "Error: Pre-compiled 'bizbox-mvp' binary not found in this directory."
+  exit 1
+fi
+chmod +x bizbox-mvp
 
 # 6. Configure Systemd Service
 echo "Configuring Systemd service..."
