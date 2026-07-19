@@ -116,10 +116,21 @@ if [ "$IS_UEFI" -eq 1 ]; then
   mount "$ESP_PART" /target/boot/efi
 fi
 
+# Stop services that mount FUSE/virtual filesystems under /var/lib before
+# copying, and always exclude those paths regardless - lxcfs exposes fake
+# /proc-style files (e.g. /var/lib/lxcfs/proc/swaps) that return ENODATA
+# when rsync tries to read them, which previously aborted the whole install
+# (rsync exit code 23 + set -e). None of this is persistent data anyway -
+# it gets recreated by the services themselves on first real boot.
+systemctl stop incus incus.socket lxcfs 2>/dev/null || true
+umount -lf /var/lib/lxcfs 2>/dev/null || true
+
 rsync -aAX --info=progress2 \
   --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run \
   --exclude=/mnt --exclude=/media --exclude=/target --exclude=/cdrom \
   --exclude=/tmp --exclude=/lost+found \
+  --exclude=/var/lib/lxcfs \
+  --exclude=/var/lib/incus/**/proc* \
   / /target/
 
 mkdir -p /target/proc /target/sys /target/dev /target/run /target/tmp
