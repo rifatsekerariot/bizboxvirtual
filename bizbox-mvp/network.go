@@ -152,19 +152,13 @@ func AssignVMToSegment(vmName string, segmentName string) error {
 	// Apply inherited QoS settings of the segment to this VM (or VM's direct rule if any)
 	_ = ApplyQoSForVM(vmName)
 
-	// OVS VLAN Tagging Command wrapper:
-	// A VM's interface name attached to OVS on the host typically follows "veth-<vmName>".
-	//
-	// OVS Komutu:
-	// ovs-vsctl set port veth-<vmName> tag=<vlanID>
-	//
-	// Geliştirme ve simülasyon ortamları için komut başarısız olsa bile log yazarak devam ediyoruz.
-	portName := fmt.Sprintf("veth-%s", vmName)
-	cmd := exec.Command("ovs-vsctl", "set", "port", portName, fmt.Sprintf("tag=%d", vlanID))
+	// OVS VLAN Tagging via Incus Native configuration
+	// incus config device set <vmName> eth0 vlan=<vlanID>
+	cmd := exec.Command("incus", "config", "device", "set", vmName, "eth0", fmt.Sprintf("vlan=%d", vlanID))
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("Port tagging komutu çalıştırılamadı: '%s' (VLAN: %d) - Hata: %w. Detay: %s", portName, vlanID, err, string(out))
+		return fmt.Errorf("Port tagging komutu çalıştırılamadı: '%s' (VLAN: %d) - Hata: %w. Detay: %s", vmName, vlanID, err, string(out))
 	}
-	log.Printf("[OVS] '%s' portu başarıyla VLAN %d (Segment: %s) ile etiketlendi.", portName, vlanID, segmentName)
+	log.Printf("[OVS] '%s' cihazı başarıyla VLAN %d (Segment: %s) ile etiketlendi.", vmName, vlanID, segmentName)
 	return nil
 }
 

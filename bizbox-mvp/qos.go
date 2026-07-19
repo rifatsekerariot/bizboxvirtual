@@ -138,7 +138,14 @@ func ApplyQoSForVM(vmName string) error {
 		}
 	}
 
-	interfaceName := fmt.Sprintf("veth-%s", vmName)
+	// Get the real host interface name from Incus
+	out, errCmd := exec.Command("incus", "config", "get", vmName, "volatile.eth0.host_name").Output()
+	interfaceName := strings.TrimSpace(string(out))
+	if interfaceName == "" || errCmd != nil {
+		// Fallback to our old assumption just in case
+		interfaceName = fmt.Sprintf("veth-%s", vmName)
+	}
+
 	return configureHTB(interfaceName, priority)
 }
 
