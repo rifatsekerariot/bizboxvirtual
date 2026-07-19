@@ -861,10 +861,25 @@ func handleGetConsole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	socketPath := "/var/lib/incus/unix.socket"
+	c, err := incus.ConnectIncusUnix(socketPath, nil)
+	if err != nil {
+		http.Error(w, "Incus bağlantı hatası", http.StatusInternalServerError)
+		return
+	}
+
+	inst, _, err := c.GetInstance(vmName)
+	if err != nil {
+		http.Error(w, "Sistem bulunamadı", http.StatusNotFound)
+		return
+	}
+
 	data := struct {
-		VMName string
+		VMName       string
+		InstanceType string
 	}{
-		VMName: vmName,
+		VMName:       vmName,
+		InstanceType: string(inst.Type),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -904,8 +919,19 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 
 	wsWrapper := NewWSReadWriteCloser(conn)
 
+	inst, _, err := c.GetInstance(vmName)
+	if err != nil {
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Sistem bulunamadı"))
+		return
+	}
+
+	consoleType := "vga"
+	if inst.Type == api.InstanceTypeContainer {
+		consoleType = "console"
+	}
+
 	consolePost := api.InstanceConsolePost{
-		Type: "vga",
+		Type: consoleType,
 	}
 
 	consoleArgs := incus.InstanceConsoleArgs{

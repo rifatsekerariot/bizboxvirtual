@@ -162,7 +162,17 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+
+    /* XTerm customizations */
+    .xterm {
+      padding: 10px;
+    }
   </style>
+  {{if eq .InstanceType "container"}}
+  <link rel="stylesheet" href="/static/xterm.css" />
+  <script src="/static/xterm.js"></script>
+  <script src="/static/xterm-addon-attach.js"></script>
+  {{end}}
 </head>
 <body>
   <header class="console-header">
@@ -182,14 +192,33 @@
   </div>
 
   <script type="module">
+    {{if ne .InstanceType "container"}}
     import RFB from 'https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/core/rfb.js';
+    {{end}}
 
     const vmName = '{{.VMName}}';
+    const instanceType = '{{.InstanceType}}';
     let rfb = null;
+    let term = null;
+    let termSocket = null;
     let reconnectCount = 0;
     const maxReconnectAttempts = 3;
     let reconnecting = false;
     let userDisconnected = false;
+
+    window.disconnectConsole = function() {
+      userDisconnected = true;
+      if (rfb) {
+        rfb.disconnect();
+      }
+      if (termSocket) {
+        termSocket.close();
+      }
+      if (term) {
+        term.dispose();
+      }
+      updateStatus("Bağlantı kullanıcı tarafından kesildi.", "user-disconnected");
+    };
 
     function updateStatus(text, type) {
       const badge = document.getElementById('status-badge');
@@ -223,22 +252,36 @@
 
       updateStatus("Bağlantı kuruluyor...", "connecting");
 
-      try {
-        rfb = new RFB(container, url);
-        rfb.scaleViewport = true;
-        rfb.resizeSession = true;
+      if (instanceType === "container") {
+        // Use XTerm.js for Containers
+        if (!term) {
+          term = new Terminal({
+            cursorBlink: true,
+            theme: { background: '#0f172a' },
+            fontFamily: 'IBM Plex Mono, monospace',
+            fontSize: 14
+          });
+          term.open(container);
+        }
+        
+        termSocket = new WebSocket(url);
+        const attachAddon = new AttachAddon.AttachAddon(termSocket);
+        term.loadAddon(attachAddon);
 
-        rfb.addEventListener('connect', () => {
+        termSocket.onopen = () => {
           reconnectCount = 0;
           reconnecting = false;
           updateStatus("Bağlandı", "connected");
-        });
+          term.focus();
+          
+          // Send a newline to trigger a prompt
+          termSocket.send("\r");
+        };
 
-        rfb.addEventListener('disconnect', (e) => {
+        termSocket.onclose = () => {
           if (userDisconnected) return;
           if (reconnecting) return;
 
-          rfb = null;
           if (reconnectCount < maxReconnectAttempts) {
             reconnecting = true;
             reconnectCount++;
@@ -248,36 +291,69 @@
               connect();
             }, 2000);
           } else {
-            updateStatus("Bağlantı kesildi.", "error");
+            updateStatus("Bağlantı koptu", "error");
           }
-        });
-      } catch (err) {
-        console.error(err);
-        updateStatus("Bağlantı hatası oluşturuldu.", "error");
+        };
+
+        termSocket.onerror = () => {
+          if (!reconnecting && !userDisconnected) {
+            updateStatus("Bağlantı hatası", "error");
+          }
+        };
+
+      } else {
+        // Use noVNC for VMs
+        try {
+          rfb = new RFB(container, url);
+          rfb.scaleViewport = true;
+          rfb.resizeSession = true;
+
+          rfb.addEventListener('connect', () => {
+            reconnectCount = 0;
+            reconnecting = false;
+            updateStatus("Bağlandı", "connected");
+          });
+
+          rfb.addEventListener('disconnect', (e) => {
+            if (userDisconnected) return;
+            if (reconnecting) return;
+
+            rfb = null;
+            if (reconnectCount < maxReconnectAttempts) {
+              reconnecting = true;
+              reconnectCount++;
+              updateStatus("Bağlantı kesildi, yeniden bağlanılıyor...", "reconnecting");
+              setTimeout(() => {
+                reconnecting = false;
+                connect();
+              }, 2000);
+            } else {
+              updateStatus("Bağlantı koptu", "error");
+            }
+          });
+        } catch (e) {
+          updateStatus("Konsol başlatılamadı: " + e.message, "error");
+        }
       }
     }
 
     window.disconnectConsole = function() {
       userDisconnected = true;
-      if (rfb) {
-        rfb.disconnect();
-      }
+      if (rfb) rfb.disconnect();
+      if (termSocket) termSocket.close();
+      if (term) term.dispose();
       updateStatus("Bağlantı kesildi.", "user-disconnected");
     };
 
-    // Verify system status before initiating VNC connection
+    // Verify system status before initiating connection
     fetch(`/api/vms/${encodeURIComponent(vmName)}`)
       .then(resp => {
         if (!resp.ok) throw new Error("Sistem durumu alınamadı");
         return resp.json();
       })
       .then(status => {
-        if (status.type === "container") {
-          updateStatus("Konteynerler için VGA/VNC konsol desteği bulunmamaktadır. Yalnızca Sanal Makineler desteklenir.", "error");
-          return;
-        }
         if (status.status !== "running") {
-          updateStatus("Konsola bağlanabilmek için sanal makinenin çalışıyor olması gerekir. Lütfen önce makineyi başlatın.", "error");
+          updateStatus("Konsola bağlanabilmek için sistemin çalışıyor olması gerekir. Lütfen önce başlatın.", "error");
           return;
         }
         connect();
