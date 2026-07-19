@@ -90,6 +90,24 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
   echo bizbox-host > /etc/hostname
 "
 
+# ---------------------------------------------------------------------------
+# Netplan: tum ethernet arayzlerini DHCP ile otomatik yapilandir
+# ---------------------------------------------------------------------------
+mkdir -p "$ROOTFS_DIR/etc/netplan"
+cat > "$ROOTFS_DIR/etc/netplan/01-bizbox-network.yaml" <<'NETPLAN'
+network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    all-eth:
+      match:
+        name: "en*"
+      dhcp4: true
+      dhcp6: false
+NETPLAN
+chmod 600 "$ROOTFS_DIR/etc/netplan/01-bizbox-network.yaml"
+
+
 echo "====== [5/6] Installing BizBox payload + service ======"
 mkdir -p "$ROOTFS_DIR/opt/bizbox"
 cp -r bizbox-mvp/bizbox-mvp bizbox-mvp/static bizbox-mvp/templates "$ROOTFS_DIR/opt/bizbox/"
