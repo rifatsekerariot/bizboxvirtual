@@ -170,7 +170,7 @@ loadfont unicode
 
 menuentry "BizBox Installer by ARIOT" {
 	set gfxpayload=keep
-	linux	/casper/vmlinuz quiet autoinstall ds=nocloud;s=/cdrom/nocloud/ console=ttyS0 ---
+	linux	/casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/nocloud/ console=ttyS0 ---
 	initrd	/casper/initrd
 }
 GRUB
