@@ -53,7 +53,7 @@ autoinstall:
   version: 1
   identity:
     hostname: bizbox-host
-    password: "$6$expen5116$85z5B3Q2tQeHnK7fM45a.lG6V/yD/u9tQoK41jB6b2u3x2e3B9uD2yQ0eHnK7fM45a.lG6V/yD/u9tQoK41jB6b" # password: admin
+    password: "$6$GqJ2c9.g$vB.6xM9QyK.5nJv2B6hmBRNf00hyT5xGNRnsLSSn3xDPXIs6l34g2kpex4mh0w/fvGz4MYs02qWjVU5NrbVkto" # password: admin
     username: admin
   locale: en_US.UTF-8
   keyboard:
