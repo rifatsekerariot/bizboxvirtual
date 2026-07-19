@@ -891,6 +891,8 @@ func handleGetConsole(w http.ResponseWriter, r *http.Request) {
 
 func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 	vmName := r.PathValue("vm_name")
+	log.Printf("handleConsoleWS called for vm: %s", vmName)
+	
 	if vmName == "" {
 		http.Error(w, "VM ismi eksik", http.StatusBadRequest)
 		return
@@ -898,6 +900,7 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("Console WS upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
@@ -905,6 +908,7 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 	socketPath := "/var/lib/incus/unix.socket"
 	c, err := incus.ConnectIncusUnix(socketPath, nil)
 	if err != nil {
+		log.Printf("Console WS Incus connect error: %v", err)
 		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Incus bağlantı hatası"))
 		return
 	}
@@ -941,14 +945,16 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 
 	op, err := c.ConsoleInstance(vmName, consolePost, &consoleArgs)
 	if err != nil {
+		log.Printf("Console WS ConsoleInstance error: %v", err)
 		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
 		return
 	}
 
 	err = op.Wait()
 	if err != nil {
-		// Log or handle wait error
+		log.Printf("Console WS wait error: %v", err)
 	}
+	log.Printf("Console WS session ended for %s", vmName)
 }
 
 func main() {
