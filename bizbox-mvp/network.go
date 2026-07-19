@@ -169,7 +169,7 @@ func DeleteSegment(name string) error {
 	_ = exec.Command("ovs-ofctl", "del-flows", "br-int", fmt.Sprintf("dl_vlan=%d", vlanID)).Run()
 
 	// Also remove QoS rule if any
-	_ = DeleteQoSRule(name)
+	_, _ = db.Exec("DELETE FROM qos_rules WHERE target = ?", name)
 
 	return nil
 }
