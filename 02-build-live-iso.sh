@@ -42,9 +42,7 @@ set timeout=3
 set default=0
 
 menuentry "BizBox Installer by ARIOT" {
-    # ISO'nun etiketine (volid) göre kök dizini bulmasını sağlıyoruz
-    search --no-floppy --set=root --volid BIZBOX
-    
+    search --no-floppy --file --set=root /casper/vmlinuz
     linux /casper/vmlinuz boot=casper quiet ---
     initrd /casper/initrd
 }
