@@ -1,11 +1,11 @@
 #!/bin/bash
 # 01-build-rootfs.sh
 # Builds a minimal Ubuntu 24.04 (noble) rootfs via debootstrap that will be
-# used BOTH as the live-boot environment AND as the final installed system
-# (no separate subiquity/curtin installer stack -> much smaller image).
+# used BOTH as the live-boot environment AND as the final installed system.
 #
-# Run as root on an Ubuntu 24.04 amd64 build host (or inside a matching
-# container) with network access.
+# Run as root on an Ubuntu 24.04 amd64 build host with network access.
+# Usage: sudo bash 01-build-rootfs.sh
+#        TARGET_ADMIN_PASSWORD=mysecret sudo bash 01-build-rootfs.sh
 
 set -euo pipefail
 
@@ -14,13 +14,20 @@ RELEASE="noble"
 MIRROR="http://archive.ubuntu.com/ubuntu"
 TARGET_ADMIN_PASSWORD="${TARGET_ADMIN_PASSWORD:-admin}"
 
+# Script'in bulundugu dizini belirle (bizbox-installer.sh icin)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "====== [1/6] Installing build host dependencies ======"
-apt-get update
-apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin \
-  grub-efi-amd64-bin grub-efi-amd64-signed shim-signed mtools golang-go git whois
+apt-get update -qq
+apt-get install -y \
+  debootstrap squashfs-tools xorriso grub-pc-bin \
+  grub-efi-amd64-bin grub-efi-amd64-signed shim-signed \
+  mtools golang-go git
 
 echo "====== [2/6] Compiling BizBox application ======"
-( cd bizbox-mvp && go build -buildvcs=false -o bizbox-mvp )
+( cd "$SCRIPT_DIR/bizbox-mvp" && go build -buildvcs=false -o bizbox-mvp . )
+echo "BizBox binary: OK"
+ls -lh "$SCRIPT_DIR/bizbox-mvp/bizbox-mvp"
 
 echo "====== [3/6] debootstrap: base system ======"
 rm -rf "$ROOTFS_DIR"
@@ -29,66 +36,78 @@ debootstrap --arch=amd64 --variant=minbase "$RELEASE" "$ROOTFS_DIR" "$MIRROR"
 # ---------------------------------------------------------------------------
 # Prepare chroot (bind mounts)
 # ---------------------------------------------------------------------------
-mount --bind /dev "$ROOTFS_DIR/dev"
+mount --bind /dev     "$ROOTFS_DIR/dev"
 mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
-mount -t proc proc "$ROOTFS_DIR/proc"
-mount -t sysfs sysfs "$ROOTFS_DIR/sys"
+mount -t proc  proc   "$ROOTFS_DIR/proc"
+mount -t sysfs sysfs  "$ROOTFS_DIR/sys"
 cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
 cleanup() {
+  echo "Cleaning up chroot mounts..."
   umount -lf "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
-  umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
-  umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
-  umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
+  umount -lf "$ROOTFS_DIR/dev"     2>/dev/null || true
+  umount -lf "$ROOTFS_DIR/proc"    2>/dev/null || true
+  umount -lf "$ROOTFS_DIR/sys"     2>/dev/null || true
 }
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# APT sources: main + universe (zfsutils-linux, openvswitch, incus live in
-# main/universe on 24.04)
+# APT sources: main + universe
 # ---------------------------------------------------------------------------
 cat > "$ROOTFS_DIR/etc/apt/sources.list" <<EOF
-deb $MIRROR $RELEASE main universe
-deb $MIRROR $RELEASE-updates main universe
-deb $MIRROR $RELEASE-security main universe
+deb $MIRROR $RELEASE           main restricted universe multiverse
+deb $MIRROR $RELEASE-updates   main restricted universe multiverse
+deb $MIRROR $RELEASE-security  main restricted universe multiverse
 EOF
 
 echo "====== [4/6] Installing packages inside chroot ======"
 chroot "$ROOTFS_DIR" /bin/bash -c "
   set -e
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update
+  apt-get update -qq
   apt-get install -y --no-install-recommends \
     linux-image-generic \
+    linux-firmware \
     casper \
+    lupin-casper \
     udev \
-    systemd-sysv \
+    systemd systemd-sysv \
+    dbus \
     network-manager \
+    netplan.io \
     sudo \
+    bash \
     zfsutils-linux \
-    openvswitch-switch \
+    openvswitch-switch openvswitch-common \
     incus incus-client \
     sqlite3 \
     iptables \
-    curl \
-    parted \
-    gdisk \
-    dosfstools \
+    curl wget \
+    parted gdisk \
+    dosfstools e2fsprogs \
     rsync \
+    iproute2 \
+    openssh-server \
     grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed
   apt-get clean
   rm -rf /var/lib/apt/lists/*
 "
 
 # ---------------------------------------------------------------------------
-# Admin user + password
+# Admin kullanicisi + parola
 # ---------------------------------------------------------------------------
 chroot "$ROOTFS_DIR" /bin/bash -c "
-  useradd -m -s /bin/bash -G sudo admin || true
+  set -e
+  useradd -m -s /bin/bash -G sudo admin 2>/dev/null || true
   echo 'admin:${TARGET_ADMIN_PASSWORD}' | chpasswd
   echo 'root:${TARGET_ADMIN_PASSWORD}' | chpasswd
-  echo bizbox-host > /etc/hostname
+  echo 'bizbox-host' > /etc/hostname
+  echo '127.0.1.1 bizbox-host' >> /etc/hosts
 "
+
+# Sudo sifresiz (kurulum surecinde gerekli)
+echo "admin ALL=(ALL) NOPASSWD:ALL" > "$ROOTFS_DIR/etc/sudoers.d/admin"
+chmod 440 "$ROOTFS_DIR/etc/sudoers.d/admin"
 
 # ---------------------------------------------------------------------------
 # Netplan: tum ethernet arayzlerini DHCP ile otomatik yapilandir
@@ -107,17 +126,32 @@ network:
 NETPLAN
 chmod 600 "$ROOTFS_DIR/etc/netplan/01-bizbox-network.yaml"
 
+# ---------------------------------------------------------------------------
+# SSH: root ve admin login icin izin ver
+# ---------------------------------------------------------------------------
+mkdir -p "$ROOTFS_DIR/etc/ssh"
+cat >> "$ROOTFS_DIR/etc/ssh/sshd_config" <<'SSHEOF'
+PermitRootLogin yes
+PasswordAuthentication yes
+SSHEOF
 
+# ---------------------------------------------------------------------------
+# [5/6] BizBox payload + systemd service
+# ---------------------------------------------------------------------------
 echo "====== [5/6] Installing BizBox payload + service ======"
 mkdir -p "$ROOTFS_DIR/opt/bizbox"
-cp -r bizbox-mvp/bizbox-mvp bizbox-mvp/static bizbox-mvp/templates "$ROOTFS_DIR/opt/bizbox/"
+cp -r \
+  "$SCRIPT_DIR/bizbox-mvp/bizbox-mvp" \
+  "$SCRIPT_DIR/bizbox-mvp/static" \
+  "$SCRIPT_DIR/bizbox-mvp/templates" \
+  "$ROOTFS_DIR/opt/bizbox/"
 chmod +x "$ROOTFS_DIR/opt/bizbox/bizbox-mvp"
 
 cat > "$ROOTFS_DIR/etc/systemd/system/bizbox-mvp.service" <<'SYS'
 [Unit]
 Description=BizBox Hypervisor Manager
-After=network.target incus.service openvswitch-switch.service
-# Live boot sirasinda calismasin (sadece kurulu sistemde aktif olsun)
+After=network-online.target incus.service openvswitch-switch.service
+Wants=network-online.target
 ConditionKernelCommandLine=!boot=casper
 
 [Service]
@@ -125,7 +159,8 @@ Type=simple
 User=root
 WorkingDirectory=/opt/bizbox
 ExecStart=/opt/bizbox/bizbox-mvp serve
-Restart=always
+Restart=on-failure
+RestartSec=5
 Environment=AUTO_SNAPSHOT_INTERVAL_MINUTES=15
 
 [Install]
@@ -133,9 +168,15 @@ WantedBy=multi-user.target
 SYS
 
 chroot "$ROOTFS_DIR" systemctl enable bizbox-mvp.service
+chroot "$ROOTFS_DIR" systemctl enable NetworkManager.service
+chroot "$ROOTFS_DIR" systemctl enable ssh.service 2>/dev/null || \
+  chroot "$ROOTFS_DIR" systemctl enable sshd.service 2>/dev/null || true
 
+# ---------------------------------------------------------------------------
+# [6/6] Installer servisi (live boot'ta kurulumu gerceklestiren script)
+# ---------------------------------------------------------------------------
 echo "====== [6/6] Installing the on-boot installer service ======"
-cp "$(dirname "$0")/bizbox-installer.sh" "$ROOTFS_DIR/usr/local/sbin/bizbox-installer.sh"
+cp "$SCRIPT_DIR/bizbox-installer.sh" "$ROOTFS_DIR/usr/local/sbin/bizbox-installer.sh"
 chmod +x "$ROOTFS_DIR/usr/local/sbin/bizbox-installer.sh"
 
 cat > "$ROOTFS_DIR/etc/systemd/system/bizbox-installer.service" <<'SYS'
@@ -145,13 +186,14 @@ DefaultDependencies=no
 After=local-fs.target systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service
 Wants=systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service
 Before=getty@tty1.service
-Conflicts=getty@tty1.service
+ConditionKernelCommandLine=boot=casper
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/bizbox-installer.sh
 StandardInput=tty
 StandardOutput=tty
+StandardError=tty
 TTYPath=/dev/tty1
 RemainAfterExit=yes
 
@@ -159,10 +201,7 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 SYS
 
-# Enabled by default: the installer script itself detects (via /proc/cmdline
-# boot=casper) whether it is actually running from live media, and is a
-# no-op / self-disables otherwise, so it is safe that this stays enabled
-# inside the copied target system too (see bizbox-installer.sh).
 chroot "$ROOTFS_DIR" systemctl enable bizbox-installer.service
 
 echo "====== Rootfs build complete: $ROOTFS_DIR ======"
+echo "Simdi 02-build-live-iso.sh calistirin."
