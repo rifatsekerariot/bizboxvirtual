@@ -714,13 +714,16 @@ func handleDeleteVM(w http.ResponseWriter, r *http.Request) {
 func handleWizardStep1(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	image := r.FormValue("image")
+	instType := r.FormValue("instance_type")
 
 	data := struct {
-		Name  string
-		Image string
+		Name         string
+		Image        string
+		InstanceType string
 	}{
-		Name:  name,
-		Image: image,
+		Name:         name,
+		Image:        image,
+		InstanceType: instType,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -730,13 +733,16 @@ func handleWizardStep1(w http.ResponseWriter, r *http.Request) {
 func handleWizardStep2(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	image := r.FormValue("image")
+	instType := r.FormValue("instance_type")
 
 	data := struct {
-		Name  string
-		Image string
+		Name         string
+		Image        string
+		InstanceType string
 	}{
-		Name:  name,
-		Image: image,
+		Name:         name,
+		Image:        image,
+		InstanceType: instType,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -746,6 +752,7 @@ func handleWizardStep2(w http.ResponseWriter, r *http.Request) {
 func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	image := r.FormValue("image")
+	instType := r.FormValue("instance_type")
 	cpuStr := r.FormValue("cpu")
 	ramStr := r.FormValue("ram")
 
@@ -755,16 +762,18 @@ func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
 	fmt.Sscanf(ramStr, "%d", &ram)
 
 	data := struct {
-		Name  string
-		Image string
-		CPU   int
-		RAM   int
-		Error string
+		Name         string
+		Image        string
+		InstanceType string
+		CPU          int
+		RAM          int
+		Error        string
 	}{
-		Name:  name,
-		Image: image,
-		CPU:   cpu,
-		RAM:   ram,
+		Name:         name,
+		Image:        image,
+		InstanceType: instType,
+		CPU:          cpu,
+		RAM:          ram,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

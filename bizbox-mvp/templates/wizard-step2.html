@@ -1,6 +1,7 @@
 <form hx-post="/api/wizard/step3" hx-target="#wizard-modal-body">
   <input type="hidden" name="name" value="{{.Name}}">
   <input type="hidden" name="image" value="{{.Image}}">
+  <input type="hidden" name="instance_type" value="{{.InstanceType}}">
   <input type="hidden" name="preset" id="selected-preset" value="small">
 
   <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">Kaynak Profili</label>
@@ -37,7 +38,7 @@
   </div>
 
   <div class="wizard-footer">
-    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step1" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}"}'>Geri</button>
+    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step1" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}", "instance_type": "{{.InstanceType}}"}'>Geri</button>
     <button type="submit" class="btn btn-primary">İleri</button>
   </div>
 </form>

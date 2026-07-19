@@ -7,6 +7,7 @@
 <form hx-post="/api/vms" hx-target="#wizard-modal-body" onsubmit="disableSubmitButton(this)">
   <input type="hidden" name="name" value="{{.Name}}">
   <input type="hidden" name="image" value="{{.Image}}">
+  <input type="hidden" name="instance_type" value="{{.InstanceType}}">
   <input type="hidden" name="cpu" value="{{.CPU}}">
   <input type="hidden" name="ram" value="{{.RAM}}">
 
@@ -30,7 +31,7 @@
   </div>
 
   <div class="wizard-footer">
-    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step2" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}"}'>Geri</button>
+    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step2" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}", "instance_type": "{{.InstanceType}}"}'>Geri</button>
     <button type="submit" class="btn btn-primary" id="create-vm-submit-btn">Oluştur</button>
   </div>
 </form>
