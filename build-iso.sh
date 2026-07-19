@@ -24,7 +24,7 @@ apt-get install -y xorriso squashfs-tools wget curl golang-go git
 # 2. Compile BizBox Go Application
 echo "Compiling BizBox application..."
 cd bizbox-mvp
-go build -o bizbox-mvp
+go build -buildvcs=false -o bizbox-mvp
 cd ..
 
 # 3. Download Ubuntu Base ISO if not present
