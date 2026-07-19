@@ -83,7 +83,19 @@ autoinstall:
       echo -e "\n" > /dev/tty1
       echo -e "\t    Sanal hypervisor sistemi kuruluyor, lutfen bekleyin... " > /dev/tty1
       echo -e "\t    [Bu islem birkac dakika surebilir]" > /dev/tty1
-      echo -e "\n\t    Kurulum durumu: PAKETLER VE BAGIMLILIKLAR YUKLENIYOR..." > /dev/tty1
+      echo -e "\n\t    Kurulum durumu: DISKLER TEMIZLENIYOR (WIPING DISKS)..." > /dev/tty1
+
+      # Wipe all physical disks except the installation source itself
+      for disk in $(lsblk -dn -o NAME,TYPE | grep -E "disk" | awk '{print $1}'); do
+        # Skip the installation USB/CDROM to prevent bricking the installer boot
+        if mount | grep -E "^/dev/${disk}[0-9]*" | grep -q -E "/cdrom|/media"; then
+          continue
+        fi
+        wipefs -a -f "/dev/$disk" || true
+        dd if=/dev/zero of="/dev/$disk" bs=1M count=50 conv=fdatasync || true
+      done
+
+      echo -e "\n\t    Kurulum durumu: DISKLER BASARIYLA TEMIZLENDI. PAKETLER YUKLENIYOR..." > /dev/tty1
   late-commands:
     - |
       echo -e "\t    Kurulum durumu: BIZBOX DOSYALARI KOPYALANIYOR VE DERLENIYOR..." > /dev/tty1
