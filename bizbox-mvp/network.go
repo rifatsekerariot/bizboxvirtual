@@ -47,8 +47,46 @@ func InitNetworkDB() {
 	// No seed database segments in production to prevent mock/placeholder data
 }
 
+// syncNetworkDB checks actual VMs in Incus and removes ghost VMs from the network DB
+func syncNetworkDB() {
+	liveVMs, err := getAllVMNames()
+	if err != nil {
+		log.Printf("[Network] VM isimleri senkronize edilemedi: %v", err)
+		return
+	}
+
+	liveMap := make(map[string]bool)
+	for _, vm := range liveVMs {
+		liveMap[vm] = true
+	}
+
+	rows, err := db.Query("SELECT vm_name FROM network_segment_vms")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var toDelete []string
+	for rows.Next() {
+		var vm string
+		if err := rows.Scan(&vm); err == nil {
+			if !liveMap[vm] {
+				toDelete = append(toDelete, vm)
+			}
+		}
+	}
+	rows.Close()
+
+	for _, vm := range toDelete {
+		log.Printf("[Network] Ölü VM veritabanından temizleniyor: %s", vm)
+		db.Exec("DELETE FROM network_segment_vms WHERE vm_name = ?", vm)
+	}
+}
+
 // ListNetworkSegments lists all segments and their assigned VMs from database
 func ListNetworkSegments() []Segment {
+	syncNetworkDB()
+
 	rows, err := db.Query("SELECT name, vlan_id FROM network_segments ORDER BY vlan_id ASC")
 	if err != nil {
 		log.Printf("Segmentler listelenirken hata: %v", err)
@@ -132,6 +170,8 @@ func AssignVMToSegment(vmName string, segmentName string) error {
 
 // DeleteSegment deletes a segment, un-tags its VMs, and removes OVS flow rules
 func DeleteSegment(name string) error {
+	syncNetworkDB()
+
 	var vlanID int
 	err := db.QueryRow("SELECT vlan_id FROM network_segments WHERE name = ?", name).Scan(&vlanID)
 	if err != nil {
@@ -336,7 +376,7 @@ func handleCreateSegmentAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = CreateSegment(name, vlanID)
+	err := CreateSegment(name, vlanID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Segment oluşturulamadı: %v", err), http.StatusInternalServerError)
 		return
