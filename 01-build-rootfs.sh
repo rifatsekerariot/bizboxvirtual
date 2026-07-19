@@ -173,6 +173,32 @@ chroot "$ROOTFS_DIR" systemctl enable NetworkManager.service
 chroot "$ROOTFS_DIR" systemctl enable ssh.service 2>/dev/null || \
   chroot "$ROOTFS_DIR" systemctl enable sshd.service 2>/dev/null || true
 
+# Fix DNS via systemd-resolved
+chroot "$ROOTFS_DIR" systemctl enable systemd-resolved.service
+chroot "$ROOTFS_DIR" rm -f /etc/resolv.conf
+chroot "$ROOTFS_DIR" ln -s ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
+# Create an initialization service for Incus so it runs automatically on first boot
+cat > "$ROOTFS_DIR/etc/systemd/system/incus-init.service" <<'SYS'
+[Unit]
+Description=Initialize Incus default profile and pool
+After=incus.service
+Requires=incus.service
+Before=bizbox-mvp.service
+ConditionPathExists=!/var/lib/bizbox_incus_initialized
+ConditionKernelCommandLine=!boot=casper
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c "incus admin init --auto && incus profile device add default root disk path=/ pool=default && touch /var/lib/bizbox_incus_initialized"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SYS
+
+chroot "$ROOTFS_DIR" systemctl enable incus-init.service
+
 # ---------------------------------------------------------------------------
 # [6/6] Installer servisi (live boot'ta kurulumu gerceklestiren script)
 # ---------------------------------------------------------------------------
