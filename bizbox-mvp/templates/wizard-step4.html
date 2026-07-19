@@ -1,0 +1,55 @@
+{{if .Error}}
+<div class="wizard-error">
+  {{.Error}}
+</div>
+{{end}}
+
+<form hx-post="/api/vms" hx-target="#wizard-modal-body" onsubmit="disableSubmitButton(this)">
+  <input type="hidden" name="name" value="{{.Name}}">
+  <input type="hidden" name="image" value="{{.Image}}">
+  <input type="hidden" name="instance_type" value="{{.InstanceType}}">
+  <input type="hidden" name="cpu" value="{{.CPU}}">
+  <input type="hidden" name="ram" value="{{.RAM}}">
+  <input type="hidden" name="network_type" value="{{.NetworkType}}">
+  <input type="hidden" name="network_bridge" value="{{.NetworkBridge}}">
+  <input type="hidden" name="vlan_id" value="{{.VLANID}}">
+  <input type="hidden" name="static_ip" value="{{.StaticIP}}">
+
+  <div class="summary-card">
+    <div class="summary-row">
+      <span class="summary-label">Sistem Adı</span>
+      <span class="summary-value font-mono">{{.Name}}</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">İşletim Sistemi / İmaj</span>
+      <span class="summary-value font-mono">{{.Image}}</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">CPU Limiti</span>
+      <span class="summary-value font-mono">{{.CPU}} vCPU</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">Bellek Limiti</span>
+      <span class="summary-value font-mono">{{.RAM}} GiB</span>
+    </div>
+    <div class="summary-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
+      <span class="summary-label">Ağ Tipi</span>
+      <span class="summary-value font-mono">{{if eq .NetworkType "bridged"}}Köprülü (Bridged){{else}}NAT{{end}}</span>
+    </div>
+    {{if eq .NetworkType "bridged"}}
+    <div class="summary-row">
+      <span class="summary-label">Köprü Ağı</span>
+      <span class="summary-value font-mono">{{.NetworkBridge}}{{if .VLANID}} (VLAN: {{.VLANID}}){{end}}</span>
+    </div>
+    {{end}}
+    <div class="summary-row">
+      <span class="summary-label">IP Adresi</span>
+      <span class="summary-value font-mono">{{if .StaticIP}}{{.StaticIP}}{{else}}DHCP (Otomatik){{end}}</span>
+    </div>
+  </div>
+
+  <div class="wizard-footer">
+    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step3" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}", "instance_type": "{{.InstanceType}}", "cpu": "{{.CPU}}", "ram": "{{.RAM}}", "network_type": "{{.NetworkType}}", "network_bridge": "{{.NetworkBridge}}", "vlan_id": "{{.VLANID}}", "static_ip": "{{.StaticIP}}"}'>Geri</button>
+    <button type="submit" class="btn btn-primary" id="create-vm-submit-btn">Oluştur</button>
+  </div>
+</form>

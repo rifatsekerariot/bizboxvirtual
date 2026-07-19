@@ -91,7 +91,7 @@ func getHostDiskUsage() (percent int, formatted string, err error) {
 }
 
 // CreateVM creates a virtual machine or container in Incus.
-func CreateVM(name string, image string, instType api.InstanceType, cpu int, memoryGiB int) error {
+func CreateVM(name string, image string, instType api.InstanceType, cpu int, memoryGiB int, devices map[string]map[string]string) error {
 	socketPath := "/var/lib/incus/unix.socket"
 
 	// Connect to the local Incus daemon using the Unix socket
@@ -131,6 +131,7 @@ func CreateVM(name string, image string, instType api.InstanceType, cpu int, mem
 				"limits.cpu":    fmt.Sprintf("%d", cpu),
 				"limits.memory": fmt.Sprintf("%dGiB", memoryGiB),
 			},
+			Devices: devices,
 		},
 	}
 
@@ -552,6 +553,11 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		cpuStr := r.FormValue("cpu")
 		ramStr := r.FormValue("ram")
 
+		networkType := r.FormValue("network_type")
+		networkBridge := r.FormValue("network_bridge")
+		vlanID := r.FormValue("vlan_id")
+		staticIP := r.FormValue("static_ip")
+
 		cpu := 2
 		ram := 4
 		fmt.Sscanf(cpuStr, "%d", &cpu)
@@ -563,25 +569,65 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 			instType = api.InstanceTypeContainer
 		}
 
-		err := CreateVM(name, image, instType, cpu, ram)
+		// Prepare devices map
+		devices := map[string]map[string]string{}
+		
+		eth0 := map[string]string{
+			"name": "eth0",
+			"type": "nic",
+		}
+
+		if networkType == "bridged" {
+			eth0["nictype"] = "bridged"
+			if networkBridge != "" {
+				eth0["parent"] = networkBridge
+			} else {
+				eth0["parent"] = "br-int"
+			}
+			if vlanID != "" {
+				eth0["vlan"] = vlanID
+			}
+			if staticIP != "" {
+				eth0["ipv4.address"] = staticIP
+			}
+		} else if networkType == "nat" {
+			eth0["nictype"] = "bridged"
+			eth0["parent"] = "incusbr0"
+		} else {
+			eth0["nictype"] = "bridged"
+			eth0["parent"] = "br-int"
+		}
+		
+		devices["eth0"] = eth0
+
+		err := CreateVM(name, image, instType, cpu, ram, devices)
 		if err != nil {
-			// If creation fails, we return step 3 template with the error message
 			data := struct {
-				Name  string
-				Image string
-				CPU   int
-				RAM   int
-				Error string
+				Name          string
+				Image         string
+				InstanceType  string
+				CPU           string
+				RAM           string
+				NetworkType   string
+				NetworkBridge string
+				VLANID        string
+				StaticIP      string
+				Error         string
 			}{
-				Name:  name,
-				Image: image,
-				CPU:   cpu,
-				RAM:   ram,
-				Error: err.Error(),
+				Name:          name,
+				Image:         image,
+				InstanceType:  instTypeStr,
+				CPU:           cpuStr,
+				RAM:           ramStr,
+				NetworkType:   networkType,
+				NetworkBridge: networkBridge,
+				VLANID:        vlanID,
+				StaticIP:      staticIP,
+				Error:         err.Error(),
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusOK) // HTMX expects 200 to swap in error block smoothly
-			templates.ExecuteTemplate(w, "wizard-step3.html", data)
+			w.WriteHeader(http.StatusOK)
+			templates.ExecuteTemplate(w, "wizard-step4.html", data)
 			return
 		}
 
@@ -621,7 +667,15 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		instType = api.InstanceTypeContainer
 	}
 
-	err = CreateVM(req.Name, req.Image, instType, req.CPU, req.RAM)
+	devices := map[string]map[string]string{}
+	devices["eth0"] = map[string]string{
+		"name": "eth0",
+		"type": "nic",
+		"nictype": "bridged",
+		"parent": "br-int",
+	}
+
+	err = CreateVM(req.Name, req.Image, instType, req.CPU, req.RAM, devices)
 	if err != nil {
 		LogSystemEvent(getUsername(r), "Oluşturma", req.Name, "Başarısız")
 		http.Error(w, fmt.Sprintf("VM oluşturulamadı: %v", err), http.StatusInternalServerError)
@@ -751,34 +805,50 @@ func handleWizardStep2(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	image := r.FormValue("image")
-	instType := r.FormValue("instance_type")
-	cpuStr := r.FormValue("cpu")
-	ramStr := r.FormValue("ram")
-
-	cpu := 2
-	ram := 4
-	fmt.Sscanf(cpuStr, "%d", &cpu)
-	fmt.Sscanf(ramStr, "%d", &ram)
-
 	data := struct {
 		Name         string
 		Image        string
 		InstanceType string
-		CPU          int
-		RAM          int
-		Error        string
+		CPU          string
+		RAM          string
 	}{
-		Name:         name,
-		Image:        image,
-		InstanceType: instType,
-		CPU:          cpu,
-		RAM:          ram,
+		Name:         r.FormValue("name"),
+		Image:        r.FormValue("image"),
+		InstanceType: r.FormValue("instance_type"),
+		CPU:          r.FormValue("cpu"),
+		RAM:          r.FormValue("ram"),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	templates.ExecuteTemplate(w, "wizard-step3.html", data)
+}
+
+func handleWizardStep4(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Name          string
+		Image         string
+		InstanceType  string
+		CPU           string
+		RAM           string
+		NetworkType   string
+		NetworkBridge string
+		VLANID        string
+		StaticIP      string
+		Error         string
+	}{
+		Name:          r.FormValue("name"),
+		Image:         r.FormValue("image"),
+		InstanceType:  r.FormValue("instance_type"),
+		CPU:           r.FormValue("cpu"),
+		RAM:           r.FormValue("ram"),
+		NetworkType:   r.FormValue("network_type"),
+		NetworkBridge: r.FormValue("network_bridge"),
+		VLANID:        r.FormValue("vlan_id"),
+		StaticIP:      r.FormValue("static_ip"),
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	templates.ExecuteTemplate(w, "wizard-step4.html", data)
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -1018,6 +1088,7 @@ func main() {
 		mux.HandleFunc("POST /api/wizard/step1", handleWizardStep1)
 		mux.HandleFunc("POST /api/wizard/step2", handleWizardStep2)
 		mux.HandleFunc("POST /api/wizard/step3", handleWizardStep3)
+		mux.HandleFunc("POST /api/wizard/step4", handleWizardStep4)
 
 		// ZFS Snapshot management endpoints
 		mux.HandleFunc("GET /api/snapshots", handleGetSnapshots)

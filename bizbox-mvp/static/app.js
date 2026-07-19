@@ -16,7 +16,17 @@ function toggleDropdown(event, id) {
   });
   const el = document.getElementById(id);
   if (el) {
-    el.classList.toggle('show');
+    const isShowing = el.classList.contains('show');
+    if (!isShowing) {
+      const btnRect = event.currentTarget.getBoundingClientRect();
+      el.style.position = 'fixed';
+      el.style.top = (btnRect.bottom + 4) + 'px';
+      el.style.left = 'auto'; // Reset left just in case
+      el.style.right = (window.innerWidth - btnRect.right) + 'px';
+      el.classList.add('show');
+    } else {
+      el.classList.remove('show');
+    }
   }
 }
 
