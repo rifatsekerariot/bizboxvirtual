@@ -55,6 +55,16 @@ echo "Chrooting and customizing target system..."
 # Ensure mount directories exist
 mkdir -p "$SQUASHFS_DIR/dev" "$SQUASHFS_DIR/dev/pts" "$SQUASHFS_DIR/proc" "$SQUASHFS_DIR/sys" "$SQUASHFS_DIR/etc"
 
+# Define mount cleanup function to run on exit or failure
+cleanup_mounts() {
+  echo "Cleaning up mounts..."
+  umount -f "$SQUASHFS_DIR/sys" 2>/dev/null || true
+  umount -f "$SQUASHFS_DIR/proc" 2>/dev/null || true
+  umount -f "$SQUASHFS_DIR/dev/pts" 2>/dev/null || true
+  umount -f "$SQUASHFS_DIR/dev" 2>/dev/null || true
+}
+trap cleanup_mounts EXIT
+
 # Bind mount system directories to chroot for network and process support
 mount --bind /dev "$SQUASHFS_DIR/dev"
 mount --bind /dev/pts "$SQUASHFS_DIR/dev/pts"
@@ -63,7 +73,7 @@ mount --bind /sys "$SQUASHFS_DIR/sys"
 cp /etc/resolv.conf "$SQUASHFS_DIR/etc/resolv.conf"
 
 # Execute commands inside chroot
-cat <<CHROOT_EOF | chroot "$SQUASHFS_DIR" /bin/bash
+cat <<CHROOT_EOF | chroot "$SQUASHFS_DIR" /bin/sh
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y \
@@ -81,10 +91,8 @@ rm -rf /var/lib/apt/lists/*
 CHROOT_EOF
 
 # Unmount system directories
-umount "$SQUASHFS_DIR/sys"
-umount "$SQUASHFS_DIR/proc"
-umount "$SQUASHFS_DIR/dev/pts"
-umount "$SQUASHFS_DIR/dev"
+cleanup_mounts
+trap - EXIT
 
 # 8. Copy BizBox files into the SquashFS filesystem
 echo "Embedding BizBox into SquashFS..."
