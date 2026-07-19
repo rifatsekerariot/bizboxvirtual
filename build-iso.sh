@@ -5,8 +5,12 @@
 set -e
 
 # Configuration
-UBUNTU_ISO_URL="https://releases.ubuntu.com/24.04/ubuntu-24.04-live-server-amd64.iso"
-ORIGINAL_ISO="ubuntu-24.04-live-server-amd64.iso"
+LATEST_ISO_FILE=$(curl -s https://releases.ubuntu.com/24.04/ | grep -oE 'ubuntu-24.04\.[0-9]+-live-server-amd64\.iso' | head -n 1)
+if [ -z "$LATEST_ISO_FILE" ]; then
+  LATEST_ISO_FILE="ubuntu-24.04.1-live-server-amd64.iso"
+fi
+UBUNTU_ISO_URL="https://releases.ubuntu.com/24.04/$LATEST_ISO_FILE"
+ORIGINAL_ISO="$LATEST_ISO_FILE"
 CUSTOM_ISO="bizbox-installer.iso"
 BUILD_DIR="/tmp/bizbox-iso-build"
 ISO_MOUNT_DIR="/tmp/bizbox-iso-mount"
@@ -17,7 +21,7 @@ echo "====== Starting BizBox ISO Build ======"
 # 1. Install required packages on build host
 echo "Installing build dependencies..."
 apt-get update
-apt-get install -y xorriso squashfs-tools wget golang-go git
+apt-get install -y xorriso squashfs-tools wget curl golang-go git
 
 # 2. Compile BizBox Go Application
 echo "Compiling BizBox application..."
@@ -27,7 +31,7 @@ cd ..
 
 # 3. Download Ubuntu Base ISO if not present
 if [ ! -f "$ORIGINAL_ISO" ]; then
-  echo "Downloading base Ubuntu Server ISO..."
+  echo "Downloading base Ubuntu Server ISO ($ORIGINAL_ISO)..."
   wget -O "$ORIGINAL_ISO" "$UBUNTU_ISO_URL"
 fi
 
