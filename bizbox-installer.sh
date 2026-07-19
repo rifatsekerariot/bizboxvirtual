@@ -185,8 +185,6 @@ ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 echo -e "\t    Kurulum durumu: BOOTLOADER KURULUYOR..."
 
 if [ "$IS_UEFI" -eq 1 ]; then
-  # NVRAM'a boot girişini kayıt ediyoruz (--no-nvram KULLANILMIYOR)
-  # --removable: /EFI/BOOT/BOOTX64.EFI yoluna da yazarak fallback sağlıyor
   chroot /target grub-install \
     --target=x86_64-efi \
     --efi-directory=/boot/efi \
@@ -197,10 +195,18 @@ else
   chroot /target grub-install --target=i386-pc --recheck "/dev/$TARGET_DISK"
 fi
 
-# update-grub yerine doğrudan grub.cfg yazıyoruz.
-# update-grub live ortamdaki /proc/cmdline içindeki boot=casper parametresini
-# grub.cfg'ye kopyalar; bu kurulu sistemi de live mod olarak başlatır.
-ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
+# Kernel ve initrd dosya adlarini degiskenlerle coz (heredoc icinde komut genisletme guvenilir degil)
+KERNEL_FILE=$(basename "$(ls /target/boot/vmlinuz-* 2>/dev/null | sort -V | tail -n1)")
+INITRD_FILE=$(basename "$(ls /target/boot/initrd.img-* 2>/dev/null | sort -V | tail -n1)")
+
+if [ -z "$KERNEL_FILE" ] || [ -z "$INITRD_FILE" ]; then
+  echo "HATA: Kernel veya initrd dosyasi /target/boot/ icinde bulunamadi!"
+  ls /target/boot/
+  exit 1
+fi
+
+echo "DEBUG: Kernel=$KERNEL_FILE Initrd=$INITRD_FILE UUID=$ROOT_UUID"
+
 mkdir -p /target/boot/grub
 cat > /target/boot/grub/grub.cfg << GRUBCFG
 set default=0
@@ -208,9 +214,13 @@ set timeout=5
 
 loadfont unicode
 
+# Root disk'i UUID uzerinden bul (boot ortamdan bagimsiz)
+search --no-floppy --fs-uuid --set=root $ROOT_UUID
+
 menuentry "BizBox Hypervisor" {
-    linux /boot/$(basename "$(ls /target/boot/vmlinuz-* | sort -V | tail -n1)") root=UUID=${ROOT_UUID} ro quiet splash
-    initrd /boot/$(basename "$(ls /target/boot/initrd.img-* | sort -V | tail -n1)")
+    search --no-floppy --fs-uuid --set=root $ROOT_UUID
+    linux /boot/$KERNEL_FILE root=UUID=$ROOT_UUID ro quiet
+    initrd /boot/$INITRD_FILE
 }
 GRUBCFG
 
