@@ -192,6 +192,7 @@ chmod 1777 /target/tmp
 
 mount --bind /dev      /target/dev
 mount --bind /dev/pts  /target/dev/pts
+mount --bind /run      /target/run
 mount -t proc  proc    /target/proc
 mount -t sysfs sysfs   /target/sys
 
@@ -360,6 +361,7 @@ chroot /target ovs-vsctl show 2>/dev/null | grep -q "br-int" || \
 umount -f /target/sys/firmware/efi/efivars || true
 umount -f /target/sys || true
 umount -f /target/proc || true
+umount -f /target/run || true
 umount -f /target/dev/pts || true
 umount -f /target/dev || true
 [ "$IS_UEFI" -eq 1 ] && umount -lf /target/boot/efi 2>/dev/null || true
