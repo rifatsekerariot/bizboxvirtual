@@ -80,8 +80,24 @@ autoinstall:
 
       # Configure ZFS Storage Pool on target
       curtin in-target -- zpool list | grep -q "rft" || {
-        curtin in-target -- truncate -s 20G /var/lib/bizbox_zfs.img
-        curtin in-target -- zpool create rft /var/lib/bizbox_zfs.img
+        # Find OS disk partition (active on /target)
+        OS_DISK=$(df /target | tail -1 | awk '{print $1}' | grep -o '/dev/[a-zA-Z0-9]*' | head -n1)
+        # Resolve to disk base name (e.g. sda, nvme0n1)
+        OS_DISK_NAME=$(basename $(readlink -f $OS_DISK) | sed -E 's/([0-9]+|p[0-9]+)$//')
+
+        # Find first disk device that is not the OS disk
+        SECONDARY_DISK=$(lsblk -dn -o NAME,TYPE | grep -E "disk" | awk '{print $1}' | grep -v "$OS_DISK_NAME" | head -n1)
+
+        if [ -n "$SECONDARY_DISK" ]; then
+          # Wipe secondary disk partition signatures to avoid ZFS errors
+          dd if=/dev/zero of="/dev/$SECONDARY_DISK" bs=1M count=10 conv=fdatasync || true
+          # Create ZFS pool on secondary disk directly
+          curtin in-target -- zpool create -f rft "/dev/$SECONDARY_DISK"
+        else
+          # Fallback to loop image on the OS partition if no other disk exists
+          curtin in-target -- truncate -s 20G /var/lib/bizbox_zfs.img
+          curtin in-target -- zpool create rft /var/lib/bizbox_zfs.img
+        fi
       }
       curtin in-target -- zfs create -p rft/virtual-machines || true
       curtin in-target -- zfs create -p rft/containers || true
