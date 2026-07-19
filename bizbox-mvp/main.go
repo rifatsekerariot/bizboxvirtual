@@ -89,8 +89,8 @@ func getHostDiskUsage() (percent int, formatted string, err error) {
 	return percent, formatted, nil
 }
 
-// CreateVM creates a virtual machine (VM, not a container) in Incus.
-func CreateVM(name string, image string, cpu int, memoryGiB int) error {
+// CreateVM creates a virtual machine or container in Incus.
+func CreateVM(name string, image string, instType api.InstanceType, cpu int, memoryGiB int) error {
 	socketPath := "/var/lib/incus/unix.socket"
 
 	// Connect to the local Incus daemon using the Unix socket
@@ -122,7 +122,7 @@ func CreateVM(name string, image string, cpu int, memoryGiB int) error {
 
 	req := api.InstancesPost{
 		Name:   name,
-		Type:   api.InstanceTypeVM, // "virtual-machine"
+		Type:   instType,
 		Source: source,
 		InstancePut: api.InstancePut{
 			Profiles: []string{"default"},
@@ -356,6 +356,7 @@ func GetVMStatus(name string) (VMStatus, error) {
 type CreateVMRequest struct {
 	Name  string `json:"name"`
 	Image string `json:"image"`
+	Type  string `json:"type"`
 	CPU   int    `json:"cpu"`
 	RAM   int    `json:"ram"`
 }
@@ -555,7 +556,13 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(cpuStr, "%d", &cpu)
 		fmt.Sscanf(ramStr, "%d", &ram)
 
-		err := CreateVM(name, image, cpu, ram)
+		instTypeStr := r.FormValue("instance_type")
+		instType := api.InstanceTypeVM
+		if instTypeStr == "container" {
+			instType = api.InstanceTypeContainer
+		}
+
+		err := CreateVM(name, image, instType, cpu, ram)
 		if err != nil {
 			// If creation fails, we return step 3 template with the error message
 			data := struct {
@@ -608,7 +615,12 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		req.RAM = 1
 	}
 
-	err = CreateVM(req.Name, req.Image, req.CPU, req.RAM)
+	instType := api.InstanceTypeVM
+	if req.Type == "container" {
+		instType = api.InstanceTypeContainer
+	}
+
+	err = CreateVM(req.Name, req.Image, instType, req.CPU, req.RAM)
 	if err != nil {
 		LogSystemEvent(getUsername(r), "Oluşturma", req.Name, "Başarısız")
 		http.Error(w, fmt.Sprintf("VM oluşturulamadı: %v", err), http.StatusInternalServerError)
@@ -1002,7 +1014,7 @@ func main() {
 		}
 
 		fmt.Printf("VM '%s' oluşturuluyor (İmaj: %s, CPU: %d, RAM: %dGiB)...\n", *nameFlag, *imageFlag, *cpuFlag, *ramFlag)
-		err = CreateVM(*nameFlag, *imageFlag, *cpuFlag, *ramFlag)
+		err = CreateVM(*nameFlag, *imageFlag, api.InstanceTypeVM, *cpuFlag, *ramFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Hata: VM oluşturulurken hata oluştu. Detay: %v\n", err)
 			os.Exit(1)

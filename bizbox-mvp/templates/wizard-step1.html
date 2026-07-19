@@ -4,14 +4,30 @@
     <input type="text" id="vm-name" name="name" required placeholder="örn: test-vm" value="{{.Name}}" autofocus>
   </div>
   
+  <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">Sistem Türü</label>
+  <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
+      <input type="radio" name="instance_type" value="virtual-machine" checked onchange="handleTypeChange(this)"> Sanal Makine (VM)
+    </label>
+    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
+      <input type="radio" name="instance_type" value="container" onchange="handleTypeChange(this)"> Konteyner (LXC)
+    </label>
+  </div>
+
   <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">İşletim Sistemi / İmaj</label>
   <input type="hidden" name="image" id="selected-image" value="{{if .Image}}{{.Image}}{{else}}images:ubuntu/22.04{{end}}">
   
   <div class="os-grid">
-    <div class="os-card {{if or (not .Image) (eq .Image "images:ubuntu/22.04")}}active{{end}}" onclick="selectOS(this, 'images:ubuntu/22.04')">
+    <div class="os-card os-card-vm {{if or (not .Image) (eq .Image "images:ubuntu/22.04")}}active{{end}}" onclick="selectOS(this, 'images:ubuntu/22.04')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><circle cx="12" cy="12" r="4"/></svg>
       <h4>Ubuntu Server</h4>
       <span>ubuntu/22.04</span>
+    </div>
+
+    <div class="os-card os-card-container" style="display: none;" onclick="selectOS(this, 'images:ubuntu/22.04')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+      <h4>Ubuntu Konteyner</h4>
+      <span>ubuntu/22.04 (Hafif ve Hızlı)</span>
     </div>
     
     <div class="os-card {{if eq .Image "images:windows/server-2022"}}active{{end}}" onclick="selectOS(this, 'images:windows/server-2022')">
@@ -38,3 +54,35 @@
     <button type="submit" class="btn btn-primary">İleri</button>
   </div>
 </form>
+
+<script>
+function handleTypeChange(radio) {
+  const isContainer = radio.value === 'container';
+  const osGrid = radio.closest('form').querySelector('.os-grid');
+  const cards = osGrid.querySelectorAll('.os-card');
+  const inputImage = document.getElementById('selected-image');
+  
+  cards.forEach(card => {
+    card.classList.remove('active');
+    if (isContainer) {
+      if (card.classList.contains('os-card-container')) {
+        card.style.display = 'flex';
+        card.classList.add('active');
+        inputImage.value = 'images:ubuntu/22.04';
+      } else {
+        card.style.display = 'none';
+      }
+    } else {
+      if (card.classList.contains('os-card-container')) {
+        card.style.display = 'none';
+      } else {
+        card.style.display = 'flex';
+        if (card.classList.contains('os-card-vm')) {
+          card.classList.add('active');
+          inputImage.value = 'images:ubuntu/22.04';
+        }
+      }
+    }
+  });
+}
+</script>
