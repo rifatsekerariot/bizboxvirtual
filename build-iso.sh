@@ -1,5 +1,5 @@
 #!/bin/bash
-# BizBox Automated ISO Builder - Offline Pre-installed Version
+# BizBox Automated ISO Builder - Offline Package Insertion Version
 # Run this on your Linux server as root.
 
 set -e
@@ -12,12 +12,9 @@ fi
 UBUNTU_ISO_URL="https://releases.ubuntu.com/24.04/$LATEST_ISO_FILE"
 ORIGINAL_ISO="$LATEST_ISO_FILE"
 CUSTOM_ISO="bizbox-installer.iso"
-
 TEMP_DIR="./iso-temp"
-SQUASHFS_DIR="./squashfs-root"
-SQUASH_FILE="ubuntu-server-minimal.ubuntu-server.installer.squashfs"
 
-echo "====== Starting Offline Pre-installed BizBox ISO Build ======"
+echo "====== Starting Offline Packages BizBox ISO Build ======"
 
 # 1. Install required packages on build host
 echo "Installing build dependencies..."
@@ -38,95 +35,23 @@ fi
 
 # 4. Prepare temporary directory structure
 echo "Preparing temporary directories..."
-rm -rf "$TEMP_DIR" "$SQUASHFS_DIR"
+rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR/nocloud"
+mkdir -p "$TEMP_DIR/payload"
+mkdir -p "$TEMP_DIR/pool"
 
-# 5. Extract the original SquashFS from the ISO
-echo "Extracting installer SquashFS..."
-xorriso -osirrox on -indev "$ORIGINAL_ISO" -extract /casper/"$SQUASH_FILE" "$TEMP_DIR/$SQUASH_FILE"
+# 5. Download all offline .deb packages and dependencies
+echo "Downloading offline package dependencies..."
+cd "$TEMP_DIR/pool"
+# Download openvswitch, zfs, incus, sqlite3, iptables and curl with all dependencies
+apt-get download $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances openvswitch-switch zfsutils-linux incus incus-client sqlite3 iptables curl | grep "^\w" | sort -u) || true
+cd ../..
 
-# 6. Unsquash the filesystem
-echo "Unpacking SquashFS..."
-unsquashfs -d "$SQUASHFS_DIR" "$TEMP_DIR/$SQUASH_FILE"
-rm -f "$TEMP_DIR/$SQUASH_FILE"
+# 6. Copy BizBox files into payload
+echo "Preparing BizBox payload..."
+cp -r bizbox-mvp/bizbox-mvp bizbox-mvp/static bizbox-mvp/templates "$TEMP_DIR/payload/"
 
-# 7. Customize target system via chroot (pre-install all dependencies and BizBox)
-echo "Chrooting and customizing target system..."
-# Ensure mount directories exist
-mkdir -p "$SQUASHFS_DIR/dev" "$SQUASHFS_DIR/dev/pts" "$SQUASHFS_DIR/proc" "$SQUASHFS_DIR/sys" "$SQUASHFS_DIR/etc"
-
-# Define mount cleanup function to run on exit or failure
-cleanup_mounts() {
-  echo "Cleaning up mounts..."
-  umount -f "$SQUASHFS_DIR/sys" 2>/dev/null || true
-  umount -f "$SQUASHFS_DIR/proc" 2>/dev/null || true
-  umount -f "$SQUASHFS_DIR/dev/pts" 2>/dev/null || true
-  umount -f "$SQUASHFS_DIR/dev" 2>/dev/null || true
-}
-trap cleanup_mounts EXIT
-
-# Bind mount system directories to chroot for network and process support
-mount --bind /dev "$SQUASHFS_DIR/dev"
-mount --bind /dev/pts "$SQUASHFS_DIR/dev/pts"
-mount --bind /proc "$SQUASHFS_DIR/proc"
-mount --bind /sys "$SQUASHFS_DIR/sys"
-cp /etc/resolv.conf "$SQUASHFS_DIR/etc/resolv.conf"
-
-# Execute commands inside chroot
-cat <<CHROOT_EOF | chroot "$SQUASHFS_DIR" /bin/sh
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y \
-  openvswitch-switch \
-  zfsutils-linux \
-  incus \
-  incus-client \
-  sqlite3 \
-  iptables \
-  curl
-
-# Clean apt cache to reduce ISO size
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-CHROOT_EOF
-
-# Unmount system directories
-cleanup_mounts
-trap - EXIT
-
-# 8. Copy BizBox files into the SquashFS filesystem
-echo "Embedding BizBox into SquashFS..."
-mkdir -p "$SQUASHFS_DIR/opt/bizbox"
-cp -r bizbox-mvp/bizbox-mvp bizbox-mvp/static bizbox-mvp/templates "$SQUASHFS_DIR/opt/bizbox/"
-chmod +x "$SQUASHFS_DIR/opt/bizbox/bizbox-mvp"
-
-# Create systemd service inside SquashFS
-cat <<'SYS' > "$SQUASHFS_DIR/etc/systemd/system/bizbox-mvp.service
-[Unit]
-Description=BizBox Hypervisor Manager
-After=network.target incus.service openvswitch-switch.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/bizbox
-ExecStart=/opt/bizbox/bizbox-mvp serve
-Restart=always
-Environment=AUTO_SNAPSHOT_INTERVAL_MINUTES=15
-
-[Install]
-WantedBy=multi-user.target
-SYS
-
-# Enable the service inside SquashFS systemd symlinks
-ln -sf /etc/systemd/system/bizbox-mvp.service "$SQUASHFS_DIR/etc/systemd/system/multi-user.target.wants/bizbox-mvp.service"
-
-# 9. Repack the SquashFS
-echo "Rebuilding SquashFS (this may take a minute)..."
-mksquashfs "$SQUASHFS_DIR" "$TEMP_DIR/$SQUASH_FILE" -comp xz
-rm -rf "$SQUASHFS_DIR"
-
-# 10. Create Autoinstall configuration (user-data & meta-data)
+# 7. Create Autoinstall configuration (user-data & meta-data)
 echo "Creating Autoinstall configurations..."
 touch "$TEMP_DIR/nocloud/meta-data"
 
@@ -174,6 +99,22 @@ autoinstall:
       echo -e "\n\t    Kurulum durumu: DISKLER BASARIYLA TEMIZLENDI. DOSYALAR KOPYALANIYOR..." > /dev/tty1
   late-commands:
     - |
+      echo -e "\t    Kurulum durumu: BAGIMLILIKLAR OFFLINE OLARAK YUKLENIYOR..." > /dev/tty1
+      
+      # Install pre-packaged dependencies offline
+      dpkg -i /cdrom/pool/*.deb || true
+      # Run apt-get install -f to fix any remaining dependency order issues
+      apt-get install -y -f || true
+
+      echo -e "\t    Kurulum durumu: BIZBOX DOSYALARI KOPYALANIYOR..." > /dev/tty1
+      # Copy application payload
+      mkdir -p /target/opt/bizbox
+      cp -r /cdrom/payload/* /target/opt/bizbox/
+      chmod +x /target/opt/bizbox/bizbox-mvp
+
+      # Forcefully set target OS admin password to 'admin' to bypass YAML hash issues
+      echo "admin:admin" | curtin in-target -- chpasswd
+
       echo -e "\t    Kurulum durumu: ZFS DEPOLAMA ALANI YAPILANDIRILIYOR..." > /dev/tty1
 
       # Configure ZFS Storage Pool on target (Destroy old pools and wipe disks for clean reinstall)
@@ -204,8 +145,32 @@ autoinstall:
       curtin in-target -- zfs create -p rft/virtual-machines || true
       curtin in-target -- zfs create -p rft/containers || true
 
-      # Forcefully set target OS admin password to 'admin' to bypass YAML hash issues
-      echo "admin:admin" | curtin in-target -- chpasswd
+      # Configure OVS
+      curtin in-target -- ovs-vsctl show | grep -q "br-int" || {
+        curtin in-target -- ovs-vsctl add-br br-int
+      }
+
+      # Create systemd service
+      cat <<'SYS' > /target/etc/systemd/system/bizbox-mvp.service
+      [Unit]
+      Description=BizBox Hypervisor Manager
+      After=network.target incus.service openvswitch-switch.service
+
+      [Service]
+      Type=simple
+      User=root
+      WorkingDirectory=/opt/bizbox
+      ExecStart=/opt/bizbox/bizbox-mvp serve
+      Restart=always
+      Environment=AUTO_SNAPSHOT_INTERVAL_MINUTES=15
+
+      [Install]
+      WantedBy=multi-user.target
+      SYS
+
+      # Enable systemd service
+      curtin in-target -- systemctl daemon-reload
+      curtin in-target -- systemctl enable bizbox-mvp.service
 
       # Final message
       clear > /dev/tty1
@@ -223,7 +188,7 @@ autoinstall:
       sleep 8
 EOF
 
-# 11. Create custom grub.cfg
+# 8. Create custom grub.cfg
 echo "Creating custom bootloader configuration..."
 cat <<'GRUB' > "$TEMP_DIR/grub.cfg"
 set timeout=3
@@ -248,13 +213,14 @@ menuentry "BizBox Installer by ARIOT (Auto-install)" {
 }
 GRUB
 
-# 12. Remaster the ISO retaining all original boot capabilities (hybrid MBR/GPT + EFI)
+# 9. Remaster the ISO retaining all original boot capabilities (hybrid MBR/GPT + EFI)
 echo "Remastering bootable ISO..."
 rm -f "$CUSTOM_ISO"
 xorriso -dev "$ORIGINAL_ISO" \
   -boot_image any keep \
   -outdev "$CUSTOM_ISO" \
-  -map "$TEMP_DIR/$SQUASH_FILE" /casper/"$SQUASH_FILE" \
+  -map "$TEMP_DIR/payload" /payload \
+  -map "$TEMP_DIR/pool" /pool \
   -map "$TEMP_DIR/nocloud" /nocloud \
   -map "$TEMP_DIR/grub.cfg" /boot/grub/grub.cfg \
   -boot_image any replay
