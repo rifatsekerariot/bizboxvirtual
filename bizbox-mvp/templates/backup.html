@@ -1,0 +1,130 @@
+<div class="content-card" hx-get="/api/backup/page" hx-trigger="backup-updated from:body" hx-swap="outerHTML">
+  <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color); margin: 0;">Sistem Yedekleri (ZFS Snapshots)</h2>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">ZFS veri kümeleri üzerindeki anlık yedekler (snapshots) ve rollback yönetimi</p>
+    </div>
+    <button class="btn btn-primary" onclick="openGlobalBackupModal()">Manuel Yedek Al</button>
+  </div>
+
+  <div class="table-responsive" style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); overflow: hidden;">
+    <table class="vm-table" style="margin-bottom: 0; width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: left;">SİSTEM ADI</th>
+          <th style="padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: left;">YEDEK İSMİ</th>
+          <th style="padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: left;">TÜRÜ</th>
+          <th style="padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: left;">TARİH</th>
+          <th style="padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: right;">İŞLEMLER</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{if .Snapshots}}
+          {{range .Snapshots}}
+          <tr>
+            <td style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 14px; color: var(--text-primary);">{{.Dataset}}</td>
+            <td class="font-mono" style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); font-size: 13px;">{{.ShortName}}</td>
+            <td style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); font-size: 13px;">
+              {{if .IsAutomatic}}
+                <span class="badge" style="background-color: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;">OTOMATİK</span>
+              {{else}}
+                <span class="badge" style="background-color: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;">MANUEL</span>
+              {{end}}
+            </td>
+            <td style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-size: 13px;">{{.CreatedAt}}</td>
+            <td style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); text-align: right;">
+              <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="confirmGlobalRollback('{{.Name}}')">Geri Yükle</button>
+              <button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px; margin-left: 6px;" onclick="confirmGlobalDestroy('{{.Name}}')">Sil</button>
+            </td>
+          </tr>
+          {{end}}
+        {{else}}
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 32px; color: var(--text-secondary); font-style: italic;">
+              Sistemde henüz bir yedek bulunmuyor.
+            </td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Global Backup Creation Modal -->
+  <div id="global-backup-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: white; padding: 24px; border-radius: var(--radius-card); max-width: 400px; width: 100%;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0;">Yeni Yedek Al</h3>
+        <button class="modal-close" style="background: none; border: none; font-size: 20px; cursor: pointer;" onclick="closeGlobalBackupModal()">&times;</button>
+      </div>
+      <form hx-post="/api/snapshots" hx-target="#backup-modal-response" hx-swap="none" onsubmit="closeGlobalBackupModal(); setTimeout(function(){ htmx.trigger('body', 'backup-updated'); }, 1000);">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 6px; font-weight: 500;">Hedef Sanal Sistem</label>
+          <select name="vm" required style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color);">
+            {{range .VMs}}
+              <option value="{{.}}">{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-secondary" onclick="closeGlobalBackupModal()">İptal</button>
+          <button type="submit" class="btn btn-primary">Yedek Al</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Confirm Rollback Modal -->
+  <div id="global-rollback-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: white; padding: 24px; border-radius: var(--radius-card); max-width: 400px; width: 100%;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0;">Yedeğe Geri Dön</h3>
+        <button class="modal-close" style="background: none; border: none; font-size: 20px; cursor: pointer;" onclick="closeGlobalRollbackModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="margin-bottom: 16px;">
+        <p>Seçilen yedek noktasına geri dönmek istediğinize emin misiniz? Bu işlem mevcut tüm değişiklikleri silecektir.</p>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn btn-secondary" onclick="closeGlobalRollbackModal()">İptal</button>
+        <button type="button" class="btn btn-primary" id="global-confirm-rollback-btn">Geri Yükle</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="backup-modal-response" style="display: none;"></div>
+
+  <script>
+    function openGlobalBackupModal() {
+      document.getElementById('global-backup-modal').style.display = 'flex';
+    }
+    function closeGlobalBackupModal() {
+      document.getElementById('global-backup-modal').style.display = 'none';
+    }
+    function closeGlobalRollbackModal() {
+      document.getElementById('global-rollback-modal').style.display = 'none';
+    }
+    function confirmGlobalRollback(snapName) {
+      const modal = document.getElementById('global-rollback-modal');
+      const btn = document.getElementById('global-confirm-rollback-btn');
+      modal.style.display = 'flex';
+      btn.onclick = function() {
+        closeGlobalRollbackModal();
+        htmx.ajax('POST', '/api/snapshots/' + encodeURIComponent(snapName) + '/rollback', {
+          values: { confirm: true },
+          swap: 'none'
+        }).then(() => {
+          setTimeout(function() { htmx.trigger('body', 'backup-updated'); }, 2000);
+        });
+      };
+    }
+    function confirmGlobalDestroy(snapName) {
+      if (confirm('Bu yedeği kalıcı olarak silmek istediğinizden emin misiniz?')) {
+        htmx.ajax('POST', '/api/snapshots/destroy', {
+          values: { name: snapName },
+          swap: 'none'
+        }).then(() => {
+          setTimeout(function() { htmx.trigger('body', 'backup-updated'); }, 1000);
+        });
+      }
+    }
+  </script>
+</div>

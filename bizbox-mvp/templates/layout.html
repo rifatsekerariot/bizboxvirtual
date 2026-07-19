@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BizBox - Yönetim Paneli</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+
+  <!-- Mobile Sidebar Backdrop -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-logo">
+      <h1>BizBox</h1>
+    </div>
+    <ul class="sidebar-menu">
+      <li class="menu-item active" id="menu-dashboard">
+        <a href="#" hx-get="/api/vms" hx-target="#dashboard-content" hx-swap="innerHTML" onclick="setActiveMenu('menu-dashboard')" tabindex="0">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Dashboard
+        </a>
+      </li>
+      <li class="menu-item" id="menu-vms">
+        <a href="#" hx-get="/api/vms" hx-target="#dashboard-content" hx-swap="innerHTML" onclick="setActiveMenu('menu-vms')" tabindex="0">
+          <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          Sanal Makineler
+        </a>
+      </li>
+      <li class="menu-item" id="menu-network">
+        <a href="#" hx-get="/api/network/segments" hx-target="#dashboard-content" hx-swap="innerHTML" onclick="setActiveMenu('menu-network')" tabindex="0">
+          <svg viewBox="0 0 24 24"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M12 8v8M5 16v-5a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v5"/></svg>
+          Ağ
+        </a>
+      </li>
+      <li class="menu-item" id="menu-security">
+        <a href="#" hx-get="/api/security/page" hx-target="#dashboard-content" hx-swap="innerHTML" onclick="setActiveMenu('menu-security')" tabindex="0">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Güvenlik
+        </a>
+      </li>
+      <li class="menu-item" id="menu-backup">
+        <a href="#" hx-get="/api/backup/page" hx-target="#dashboard-content" hx-swap="innerHTML" onclick="setActiveMenu('menu-backup')" tabindex="0">
+          <svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          Yedekleme
+        </a>
+      </li>
+      <li class="menu-item" id="menu-settings">
+        <a href="#" hx-get="/api/settings/page" hx-target="#dashboard-content" hx-swap="innerHTML" onclick="setActiveMenu('menu-settings')" tabindex="0">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Ayarlar
+        </a>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- Main Wrapper -->
+  <div class="wrapper">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Menüyü Aç/Kapat" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div class="system-info">
+          <span class="hostname">{{.Hostname}}</span>
+        </div>
+      </div>
+      <div class="header-right" style="gap: 16px;">
+        <div class="status-indicator">
+          <div class="pulse-dot"></div>
+          <span>Sistem Çevrimiçi</span>
+        </div>
+        <a href="/logout" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; text-decoration: none; border-radius: var(--radius-btn);">Çıkış Yap</a>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content" id="dashboard-content" hx-get="/api/vms" hx-trigger="load" hx-swap="innerHTML">
+      <!-- Loading Skeleton (4 Cards + 1 Table block) -->
+      <div class="skeleton-grid">
+        <div class="skeleton-card">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-value"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-value"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-value"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-value"></div>
+        </div>
+      </div>
+      <div class="skeleton-table-card">
+        <div class="skeleton skeleton-table-header"></div>
+        <div class="skeleton skeleton-table-row"></div>
+        <div class="skeleton skeleton-table-row"></div>
+        <div class="skeleton skeleton-table-row"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Sistemi Sil</h3>
+        <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p><strong><span id="delete-vm-name"></span></strong> isimli sistemi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDeleteModal()">İptal</button>
+        <button class="btn btn-danger" id="confirm-delete-btn" onclick="confirmDelete()">Evet, Sil</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wizard Modal -->
+  <div id="wizard-modal" class="modal-overlay">
+    <div class="modal-content wizard-modal-content">
+      <div class="modal-header">
+        <h3>Yeni Sistem Oluştur</h3>
+        <button class="modal-close" onclick="closeWizardModal()">&times;</button>
+      </div>
+      <div id="wizard-modal-body" class="modal-body">
+        <!-- Step 1 content will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- New Segment Modal -->
+  <div id="segment-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Yeni Ağ Segmenti Ekle</h3>
+        <button class="modal-close" onclick="closeSegmentModal()">&times;</button>
+      </div>
+      <form id="create-segment-form" hx-post="/api/network/segments" hx-target="#segment-form-response" onsubmit="handleSegmentSubmit(event)">
+        <div class="modal-body">
+          <div id="segment-form-response"></div>
+          <div>
+            <label for="segment-name-input" style="display: block; font-weight: 500; margin-bottom: 6px; color: var(--text-primary);">Segment Adı</label>
+            <input type="text" id="segment-name-input" name="name" required placeholder="Örn: Pazarlama, Test Ağı" class="form-control" style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color);" autocomplete="off">
+            <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-top: 6px;">VLAN ID otomatik olarak sıradaki boş değer olarak atanacaktır.</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeSegmentModal()">İptal</button>
+          <button type="submit" class="btn btn-primary" id="create-segment-btn">Oluştur</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Change Network Modal -->
+  <div id="network-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3>Ağ Segmenti Değiştir</h3>
+        <button class="modal-close" onclick="closeNetworkModal()">&times;</button>
+      </div>
+      <form id="change-network-form" onsubmit="submitChangeNetwork(event)">
+        <div class="modal-body">
+          <p style="margin-bottom: 12px; color: var(--text-secondary);"><strong><span id="network-vm-name" style="color: var(--text-primary);"></span></strong> isimli sistemi hangi ağ segmentine atamak istiyorsunuz?</p>
+          <div style="margin-top: 15px;">
+            <label for="network-segment-select" style="display: block; font-weight: 500; margin-bottom: 6px; color: var(--text-primary);">Ağ Segmenti</label>
+            <select id="network-segment-select" class="form-control" style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color); background-color: #fff; color: var(--text-primary);">
+              <!-- Options populated dynamically -->
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeNetworkModal()">İptal</button>
+          <button type="submit" class="btn btn-primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

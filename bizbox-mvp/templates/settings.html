@@ -1,0 +1,135 @@
+<div class="content-card" hx-get="/api/settings/page" hx-trigger="settings-updated from:body" hx-swap="outerHTML">
+  <div class="content-card-header" style="margin-bottom: 24px;">
+    <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color); margin: 0;">Kullanıcı Ayarları</h2>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">Şifre, oturum süresi ve iki adımlı doğrulama (2FA) ayarlarınızı yönetin</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px;">
+    <!-- Şifre Değiştir Kartı -->
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; display: flex; flex-direction: column;">
+      <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; color: var(--accent-color);"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <span>Şifre Değiştir</span>
+      </h3>
+      <form hx-post="/api/settings/password" hx-target="#password-response">
+        <div id="password-response" style="margin-bottom: 12px;"></div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="old_password" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Mevcut Şifre</label>
+          <input type="password" id="old_password" name="old_password" required placeholder="••••••••" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); font-size: 14px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="new_password" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Yeni Şifre</label>
+          <input type="password" id="new_password" name="new_password" required placeholder="••••••••" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); font-size: 14px;">
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label for="new_password_confirm" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Yeni Şifre (Tekrar)</label>
+          <input type="password" id="new_password_confirm" name="new_password_confirm" required placeholder="••••••••" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); font-size: 14px;">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">Şifreyi Güncelle</button>
+      </form>
+    </div>
+
+    <!-- Oturum Süresi Kartı -->
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; display: flex; flex-direction: column;">
+      <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; color: var(--accent-color);"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Oturum Süresi</span>
+      </h3>
+      <form hx-post="/api/settings/session" hx-target="#session-response">
+        <div id="session-response" style="margin-bottom: 12px;"></div>
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label for="session_timeout" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Geçerlilik Süresi</label>
+          <select id="session_timeout" name="session_timeout" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); background-color: white; font-size: 14px;">
+            <option value="15m" {{if eq .User.SessionTimeout "15m"}}selected{{end}}>15 Dakika</option>
+            <option value="30m" {{if eq .User.SessionTimeout "30m"}}selected{{end}}>30 Dakika</option>
+            <option value="1h" {{if eq .User.SessionTimeout "1h"}}selected{{end}}>1 Saat</option>
+            <option value="4h" {{if eq .User.SessionTimeout "4h"}}selected{{end}}>4 Saat</option>
+            <option value="24h" {{if or (eq .User.SessionTimeout "24h") (eq .User.SessionTimeout "")}}selected{{end}}>24 Saat (Varsayılan)</option>
+          </select>
+          <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-top: 6px;">Seçilen süre, yeni oturum açılışlarında geçerli olacaktır.</span>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">Kaydet</button>
+      </form>
+    </div>
+
+    <!-- 2FA Kartı -->
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; display: flex; flex-direction: column;">
+      <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; color: var(--accent-color);"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>İki Adımlı Doğrulama (2FA)</span>
+      </h3>
+      <div id="two-factor-response" style="margin-bottom: 12px;"></div>
+
+      {{if .User.TwoFactorEnabled}}
+        <!-- 2FA Active View -->
+        <div style="text-align: center; padding: 16px; background-color: rgba(22, 163, 74, 0.05); border: 1px solid rgba(22, 163, 74, 0.2); border-radius: var(--radius-card); margin-bottom: 20px;">
+          <span style="display: block; font-size: 14px; font-weight: 600; color: var(--success-color); margin-bottom: 4px;">✓ İki Adımlı Doğrulama Aktif</span>
+          <span style="font-size: 12px; color: var(--text-secondary);">Hesabınız şu anda TOTP tabanlı ek güvenlik katmanı ile korunmaktadır.</span>
+        </div>
+
+        <form hx-post="/api/settings/2fa/disable" hx-target="#two-factor-response">
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="passcode" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Onay Kodu</label>
+            <input type="text" id="passcode" name="passcode" required placeholder="6 Haneli Kod" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); text-align: center; letter-spacing: 4px; font-family: var(--font-mono); font-size: 16px;">
+            <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-top: 6px; text-align: center;">Korumayı devre dışı bırakmak için doğrulayıcı uygulamanızdaki 6 haneli kodu girin.</span>
+          </div>
+          <button type="submit" class="btn btn-secondary" style="width: 100%; color: var(--error-color); border-color: var(--error-color); background: transparent;">Devre Dışı Bırak</button>
+        </form>
+      {{else}}
+        <!-- 2FA Setup View -->
+        <div style="text-align: center; margin-bottom: 20px;">
+          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">İki adımlı doğrulamayı kurmak için aşağıdaki QR kodu bir kimlik doğrulayıcı uygulama (Google Authenticator, Authy vb.) ile taratın.</p>
+          
+          <div style="display: inline-block; padding: 12px; background-color: white; border: 1px solid var(--border-color); border-radius: var(--radius-card); margin-bottom: 12px;">
+            <img src="{{.QRDataURL}}" alt="2FA QR Code" style="display: block; width: 180px; height: 180px; margin: 0 auto;">
+          </div>
+          
+          <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); background-color: var(--bg-color); padding: 8px; border-radius: var(--radius-btn); word-break: break-all; margin-bottom: 16px;">
+            Anahtar: <strong>{{.ProposedSecret}}</strong>
+          </div>
+        </div>
+
+        <form hx-post="/api/settings/2fa/enable" hx-target="#two-factor-response">
+          <input type="hidden" name="secret" value="{{.ProposedSecret}}">
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="passcode" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Doğrulama Kodu</label>
+            <input type="text" id="passcode" name="passcode" required placeholder="6 Haneli Kod" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); text-align: center; letter-spacing: 4px; font-family: var(--font-mono); font-size: 16px;">
+            <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-top: 6px; text-align: center;">Kurulumu tamamlamak için uygulamanın ürettiği 6 haneli kodu girin.</span>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Etkinleştir ve Kaydet</button>
+        </form>
+      {{end}}
+    </div>
+
+    <!-- Sistem Güncellemeleri Kartı -->
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; display: flex; flex-direction: column;">
+      <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <span style="display: flex; align-items: center; gap: 8px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; color: var(--accent-color);"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span>Sistem Güncelleme</span>
+        </span>
+        {{if .Version.HasUpdate}}
+          <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; background-color: rgba(22, 163, 74, 0.1); color: var(--success-color); border-radius: 12px; border: 1px solid rgba(22, 163, 74, 0.2);">
+            Yeni Sürüm Var
+          </span>
+        {{end}}
+      </h3>
+      
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">
+          <span style="color: var(--text-secondary);">Mevcut Sürüm:</span>
+          <strong style="color: var(--text-primary); font-family: var(--font-mono);">{{.Version.CurrentVersion}}</strong>
+        </div>
+      </div>
+
+      <div id="update-section" hx-get="/api/updates/status" hx-trigger="load">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; background-color: rgba(27, 75, 67, 0.05); border-radius: var(--radius-btn);">
+          <svg class="spinner" viewBox="0 0 50 50" style="width: 18px; height: 18px; animation: rotate 2s linear infinite; color: var(--accent-color);">
+            <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5" stroke-dasharray="80, 200" stroke-dashoffset="0" stroke-linecap="round"/>
+          </svg>
+          <span style="font-size: 12px; color: var(--text-secondary);">Kontrol ediliyor...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

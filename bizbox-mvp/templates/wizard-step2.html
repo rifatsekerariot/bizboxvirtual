@@ -1,0 +1,43 @@
+<form hx-post="/api/wizard/step3" hx-target="#wizard-modal-body">
+  <input type="hidden" name="name" value="{{.Name}}">
+  <input type="hidden" name="image" value="{{.Image}}">
+  <input type="hidden" name="preset" id="selected-preset" value="small">
+
+  <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">Kaynak Profili</label>
+  <div class="preset-grid">
+    <div class="preset-card active" onclick="selectPreset(this, 'small', 2, 4)">
+      <h4>Küçük</h4>
+      <div class="preset-specs">2 CPU / 4 GB RAM</div>
+    </div>
+    <div class="preset-card" onclick="selectPreset(this, 'medium', 4, 8)">
+      <h4>Orta</h4>
+      <div class="preset-specs">4 CPU / 8 GB RAM</div>
+    </div>
+    <div class="preset-card" onclick="selectPreset(this, 'large', 8, 16)">
+      <h4>Büyük</h4>
+      <div class="preset-specs">8 CPU / 16 GB RAM</div>
+    </div>
+  </div>
+
+  <div class="advanced-link-container">
+    <a href="#" class="advanced-link" onclick="toggleAdvanced(event)">Gelişmiş Seçenekler &darr;</a>
+  </div>
+
+  <div id="advanced-fields" class="advanced-fields">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="custom-cpu">CPU Çekirdek Sayısı</label>
+        <input type="number" id="custom-cpu" name="cpu" value="2" min="1" max="64">
+      </div>
+      <div class="form-group">
+        <label for="custom-ram">RAM (GiB)</label>
+        <input type="number" id="custom-ram" name="ram" value="4" min="1" max="256">
+      </div>
+    </div>
+  </div>
+
+  <div class="wizard-footer">
+    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step1" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}"}'>Geri</button>
+    <button type="submit" class="btn btn-primary">İleri</button>
+  </div>
+</form>

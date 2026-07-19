@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.VMName}} - Konsol - BizBox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #F7F8FA;
+      --card-bg: #FFFFFF;
+      --text-primary: #1A1F2B;
+      --text-secondary: #6B7280;
+      --accent-color: #1B4B43;
+      --accent-hover: #143731;
+      --border-color: #E5E7EB;
+      --success-color: #16A34A;
+      --warning-color: #D97706;
+      --error-color: #DC2626;
+      --font-ui: 'Inter', sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+      --radius-btn: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-ui);
+      background-color: #0f172a;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .console-header {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 56px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .vm-title {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-badge {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: var(--radius-btn);
+      font-family: var(--font-mono);
+      background-color: #E5E7EB;
+      color: var(--text-secondary);
+      transition: all 0.2s ease;
+    }
+
+    .status-badge.connected {
+      background-color: #DCFCE7;
+      color: var(--success-color);
+    }
+
+    .status-badge.reconnecting {
+      background-color: #FEF3C7;
+      color: var(--warning-color);
+    }
+
+    .status-badge.error {
+      background-color: #FEE2E2;
+      color: var(--error-color);
+    }
+
+    .btn-disconnect {
+      background-color: var(--error-color);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: var(--radius-btn);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      transition: background-color 0.2s;
+    }
+
+    .btn-disconnect:hover {
+      background-color: #B91C1C;
+    }
+
+    #screen-container {
+      flex-grow: 1;
+      width: 100%;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #0f172a;
+      overflow: auto;
+    }
+
+    /* noVNC canvas container */
+    #screen {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Status overlay for reconnecting / errors */
+    #status-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(15, 23, 42, 0.85);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 5;
+      font-size: 18px;
+      font-weight: 500;
+      gap: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    #status-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top-color: var(--accent-color);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <header class="console-header">
+    <div class="vm-title">
+      <span>VM: {{.VMName}}</span>
+      <span id="status-badge" class="status-badge">Bağlanılıyor...</span>
+    </div>
+    <button class="btn-disconnect" onclick="disconnectConsole()">Bağlantıyı Kes</button>
+  </header>
+
+  <div id="screen-container">
+    <div id="status-overlay">
+      <div id="status-spinner" class="spinner"></div>
+      <div id="status-text">Bağlanılıyor...</div>
+    </div>
+    <div id="screen"></div>
+  </div>
+
+  <script type="module">
+    import RFB from 'https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/core/rfb.js';
+
+    const vmName = '{{.VMName}}';
+    let rfb = null;
+    let reconnectCount = 0;
+    const maxReconnectAttempts = 3;
+    let reconnecting = false;
+    let userDisconnected = false;
+
+    function updateStatus(text, type) {
+      const badge = document.getElementById('status-badge');
+      const overlay = document.getElementById('status-overlay');
+      const overlayText = document.getElementById('status-text');
+      const spinner = document.getElementById('status-spinner');
+
+      badge.innerText = text;
+      badge.className = 'status-badge';
+      if (type) badge.classList.add(type);
+
+      if (type === 'connected') {
+        overlay.classList.remove('active');
+      } else {
+        overlay.classList.add('active');
+        overlayText.innerText = text;
+        if (type === 'error' || type === 'user-disconnected') {
+          spinner.style.display = 'none';
+        } else {
+          spinner.style.display = 'block';
+        }
+      }
+    }
+
+    function connect() {
+      if (userDisconnected) return;
+
+      const container = document.getElementById('screen');
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = `${protocol}//${window.location.host}/ws/console/${vmName}`;
+
+      updateStatus("Bağlantı kuruluyor...", "connecting");
+
+      try {
+        rfb = new RFB(container, url);
+        rfb.scaleViewport = true;
+        rfb.resizeSession = true;
+
+        rfb.addEventListener('connect', () => {
+          reconnectCount = 0;
+          reconnecting = false;
+          updateStatus("Bağlandı", "connected");
+        });
+
+        rfb.addEventListener('disconnect', (e) => {
+          if (userDisconnected) return;
+          if (reconnecting) return;
+
+          rfb = null;
+          if (reconnectCount < maxReconnectAttempts) {
+            reconnecting = true;
+            reconnectCount++;
+            updateStatus("Bağlantı kesildi, yeniden bağlanılıyor...", "reconnecting");
+            setTimeout(() => {
+              reconnecting = false;
+              connect();
+            }, 2000);
+          } else {
+            updateStatus("Bağlantı kesildi.", "error");
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        updateStatus("Bağlantı hatası oluşturuldu.", "error");
+      }
+    }
+
+    window.disconnectConsole = function() {
+      userDisconnected = true;
+      if (rfb) {
+        rfb.disconnect();
+      }
+      updateStatus("Bağlantı kesildi.", "user-disconnected");
+    };
+
+    // Verify system status before initiating VNC connection
+    fetch(`/api/vms/${encodeURIComponent(vmName)}`)
+      .then(resp => {
+        if (!resp.ok) throw new Error("Sistem durumu alınamadı");
+        return resp.json();
+      })
+      .then(status => {
+        if (status.type === "container") {
+          updateStatus("Konteynerler için VGA/VNC konsol desteği bulunmamaktadır. Yalnızca Sanal Makineler desteklenir.", "error");
+          return;
+        }
+        if (status.status !== "running") {
+          updateStatus("Konsola bağlanabilmek için sanal makinenin çalışıyor olması gerekir. Lütfen önce makineyi başlatın.", "error");
+          return;
+        }
+        connect();
+      })
+      .catch(err => {
+        updateStatus("Bağlantı öncesi sorgu başarısız: " + err.message, "error");
+      });
+  </script>
+</body>
+</html>

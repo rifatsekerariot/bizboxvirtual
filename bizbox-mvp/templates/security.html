@@ -1,0 +1,78 @@
+<div class="content-card" hx-get="/api/security/page" hx-trigger="security-updated from:body" hx-swap="outerHTML">
+  <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color); margin: 0;">XDP Saldırı Koruması</h2>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">Kernel düzeyinde eBPF/XDP tabanlı paket filtreleme ve DDoS kalkanı</p>
+    </div>
+  </div>
+
+  <div class="status-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px;">
+    <!-- Active Status Card -->
+    <div class="status-card" style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+      <div>
+        <span class="card-title" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: var(--text-secondary);">Koruma Durumu</span>
+        <span style="font-size: 20px; font-weight: 700; color: {{if .Active}}var(--success-color){{else}}var(--text-secondary){{end}};">
+          {{if .Active}}✓ ETKİN{{else}}✗ DEVRE DIŞI{{end}}
+        </span>
+      </div>
+      <div>
+        <label class="switch">
+          <input type="checkbox" id="security-toggle" hx-post="/api/security/toggle" hx-target="#security-status-response" hx-swap="none" {{if .Active}}checked{{end}}>
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Blocked Count Card -->
+    <div class="status-card" style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px;">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span class="card-title" style="font-weight: 600; font-size: 14px; color: var(--text-secondary);">Engellenen İstekler (Son 24 Saat)</span>
+        <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px; color: var(--error-color);"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="card-value" style="font-size: 32px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); margin-bottom: 0;">
+        {{.BlockedCount}}
+      </div>
+      <div class="card-desc" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Şüpheli paketler XDP_DROP aksiyonu ile engellendi</div>
+    </div>
+  </div>
+
+  <!-- Log Table Card -->
+  <div class="content-card" style="padding: 0; border: none; background: none; margin-bottom: 0;">
+    <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+      <span>🛡️ Son Güvenlik Olayları (XDP Logları)</span>
+    </h3>
+    <div class="table-responsive" style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); overflow: hidden;">
+      <table class="vm-table" style="margin-bottom: 0; width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th style="width: 200px; padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: left;">ZAMAN</th>
+            <th style="padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: left;">OLAY / DETAY</th>
+            <th style="width: 150px; padding: 12px 24px; border-bottom: 2px solid var(--border-color); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; text-align: right;">DURUM</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .Logs}}
+            {{range .Logs}}
+            <tr>
+              <td class="font-mono" style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-size: 13px;">{{.Timestamp}}</td>
+              <td style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); font-weight: 500; font-size: 14px; color: var(--text-primary);">{{.Action}}</td>
+              <td style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); text-align: right;">
+                <span class="badge" style="background-color: #FEF2F2; color: var(--error-color); border: 1px solid #FCA5A5; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; display: inline-flex; align-items: center;">
+                  ENGELLENDİ
+                </span>
+              </td>
+            </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="3" style="text-align: center; padding: 32px; color: var(--text-secondary); font-style: italic;">
+                Kayıtlı güvenlik olayı bulunmuyor.
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="security-status-response" style="display: none;"></div>
+</div>

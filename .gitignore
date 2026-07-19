@@ -1,0 +1,10 @@
+# Binary/DB ignores
+bizbox-mvp/bizbox-mvp
+bizbox-mvp/bizbox.db
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.db
+*.log

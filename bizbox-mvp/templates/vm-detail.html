@@ -1,0 +1,565 @@
+<div class="vm-detail-inner">
+  <style>
+    /* Tabs Navigation */
+    .tabs-nav {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid #E2E8F0;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 12px 20px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748B;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+    .tab-btn:hover {
+      color: #1E293B;
+    }
+    .tab-btn.active {
+      color: #1B4B43;
+      border-bottom-color: #1B4B43;
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Detail Grid */
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .detail-card {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .detail-label {
+      font-size: 11px;
+      color: #64748B;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 6px;
+      letter-spacing: 0.05em;
+    }
+    .detail-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1E293B;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    /* Timeline Section */
+    .timeline-section {
+      margin-top: 16px;
+      padding: 24px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      position: relative;
+    }
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    .timeline-container {
+      position: relative;
+      height: 140px;
+      margin-top: 40px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      padding: 0 40px;
+    }
+    .timeline-line {
+      position: absolute;
+      left: 40px;
+      right: 40px;
+      height: 4px;
+      background: #E2E8F0;
+      border-radius: 2px;
+      z-index: 1;
+    }
+    .timeline-points {
+      position: absolute;
+      left: 40px;
+      right: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 2;
+      width: calc(100% - 80px);
+    }
+    .timeline-point-container {
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .timeline-point {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      border: 4px solid #64748B;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .timeline-point.auto-snap {
+      border-color: #10B981; /* Emerald green */
+    }
+    .timeline-point.manual-snap {
+      border-color: #3B82F6; /* Royal blue */
+    }
+    .timeline-point-container:hover .timeline-point {
+      transform: scale(1.35);
+      box-shadow: 0 0 10px rgba(0,0,0,0.15);
+    }
+    
+    /* Tooltip */
+    .timeline-tooltip {
+      position: absolute;
+      bottom: 26px;
+      background: #1E293B;
+      color: #FFFFFF;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(5px);
+      transition: all 0.2s ease;
+      z-index: 10;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      pointer-events: none;
+    }
+    .timeline-point-container:hover .timeline-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    /* Popover */
+    .timeline-popover {
+      position: absolute;
+      top: 26px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 14px;
+      width: 200px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      z-index: 50;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-5px);
+      transition: all 0.2s ease;
+      text-align: left;
+    }
+    .timeline-popover.show {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .popover-header {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1E293B;
+      border-bottom: 1px solid #F1F5F9;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .popover-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94A3B8;
+      font-size: 14px;
+    }
+    .popover-body p {
+      margin: 4px 0;
+      font-size: 11px;
+      color: #475569;
+    }
+    
+    /* Nested Rollback Modal */
+    .nested-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .nested-modal.show {
+      display: flex;
+    }
+    .nested-modal-content {
+      background: #FFFFFF;
+      border-radius: 12px;
+      width: 450px;
+      max-width: 90%;
+      padding: 24px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+      animation: modalSlideUp 0.3s ease;
+    }
+    @keyframes modalSlideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Loading Overlay */
+    .loading-overlay {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.85);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      border-radius: 12px;
+    }
+    .loading-overlay.show {
+      display: flex;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #E2E8F0;
+      border-top-color: #1B4B43;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1B4B43;
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+
+  <!-- Tab buttons -->
+  <div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchDetailTab(this, 'general-tab')">Genel Bilgiler</button>
+    <button class="tab-btn" onclick="switchDetailTab(this, 'snapshots-tab')">Yedekler (ZFS Snapshots)</button>
+  </div>
+
+  <!-- Tab 1: Genel Bilgiler -->
+  <div id="general-tab" class="tab-pane active">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Sistem Adı</div>
+        <div class="detail-value" style="font-family: 'Inter';">{{.Name}}</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Durum</div>
+        <div class="detail-value">
+          <span style="display: inline-flex; align-items: center; gap: 6px;">
+            <span class="status-dot {{if eq .Status "running"}}status-running{{else}}status-stopped{{end}}"></span>
+            {{if eq .Status "running"}}Çalışıyor{{else}}Durduruldu{{end}}
+          </span>
+        </div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">CPU Çekirdek Sayısı</div>
+        <div class="detail-value">{{.CPULimit}}</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Bellek (RAM) Limiti</div>
+        <div class="detail-value">{{.RAMLimit}}</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">IP Adresi</div>
+        <div class="detail-value">{{.IPAddress}}</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Oluşturulma Tarihi</div>
+        <div class="detail-value">{{.CreatedAt}}</div>
+      </div>
+    </div>
+
+    <!-- Donanım Düzenleme Paneli -->
+    <div class="content-card" style="margin-top: 24px; padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-card); background-color: var(--card-bg);">
+      <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <span>⚙️ Donanım Limitlerini Düzenle</span>
+      </h3>
+      
+      <div id="hardware-update-response"></div>
+
+      <form hx-post="/api/vms/{{.Name}}/hardware" hx-target="#hardware-update-response" hx-swap="innerHTML">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-secondary);">CPU Çekirdek Sayısı</label>
+            <input type="number" name="cpu" value="{{.CPUVal}}" min="1" required style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color); color: var(--text-primary); background: var(--card-bg);">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-secondary);">Bellek (GiB RAM)</label>
+            <input type="number" name="ram" value="{{.RAMVal}}" min="1" required style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color); color: var(--text-primary); background: var(--card-bg);">
+          </div>
+        </div>
+        
+        {{if eq .Status "running"}}
+          <p style="font-size: 12px; color: var(--error-color); margin-bottom: 12px; font-weight: 500;">⚠️ Donanım limitlerini düzenlemek için lütfen önce sanal sistemi durdurun.</p>
+          <button type="submit" class="btn btn-primary" disabled style="opacity: 0.6; cursor: not-allowed;">Kaydet (Sistem Çalışıyor)</button>
+        {{else}}
+          <button type="submit" class="btn btn-primary">Donanım Limitlerini Kaydet</button>
+        {{end}}
+      </form>
+    </div>
+  </div>
+
+  <!-- Tab 2: Yedekler (Snapshots) -->
+  <div id="snapshots-tab" class="tab-pane">
+    <div class="timeline-section" id="timeline-section-container">
+      <!-- Loading Overlay -->
+      <div id="snapshot-loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="snapshot-loading-text">İşlem yapılıyor...</div>
+      </div>
+
+      <div class="timeline-header">
+        <div>
+          <h4 style="margin: 0; font-size: 16px; color: #1E293B;">Zaman Çizelgesi</h4>
+          <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748B;">
+            Yeşil noktalar otomatik, mavi noktalar manuel alınan yedekleri gösterir.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="triggerManualSnapshot('{{.Name}}')">Yedek Al (Manuel)</button>
+      </div>
+
+      {{if .Snapshots}}
+        <div class="timeline-container">
+          <div class="timeline-line"></div>
+          <div class="timeline-points">
+            {{range .Snapshots}}
+              <div class="timeline-point-container" onclick="toggleTimelinePopover(event, 'popover-{{.ShortName}}')">
+                <div class="timeline-point {{if .IsAutomatic}}auto-snap{{else}}manual-snap{{end}}"></div>
+                <div class="timeline-tooltip">{{.FormattedDate}}</div>
+                
+                <!-- Popover -->
+                <div id="popover-{{.ShortName}}" class="timeline-popover" onclick="event.stopPropagation()">
+                  <div class="popover-header">
+                    <span>Yedek Noktası</span>
+                    <button class="popover-close" onclick="closeTimelinePopover(event, 'popover-{{.ShortName}}')">&times;</button>
+                  </div>
+                  <div class="popover-body">
+                    <p><strong>Tarih:</strong> {{.FormattedDate}}</p>
+                    <p><strong>Tür:</strong> {{if .IsAutomatic}}Otomatik (15dk){{else}}Manuel{{end}}</p>
+                    <button class="btn btn-primary btn-xs mt-2" style="width: 100%; justify-content: center;" onclick="triggerOpenRollback('{{.ID}}', '{{.FormattedDate}}')">Geri Dön</button>
+                  </div>
+                </div>
+              </div>
+            {{end}}
+          </div>
+        </div>
+      {{else}}
+        <!-- Empty State -->
+        <div style="text-align: center; padding: 40px 20px; border: 2px dashed #E2E8F0; border-radius: 8px;">
+          <svg style="width: 48px; height: 48px; color: #94A3B8; margin-bottom: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          <h5 style="margin: 0; font-size: 14px; color: #1E293B;">Henüz yedek bulunmuyor</h5>
+          <p style="margin: 4px 0 16px 0; font-size: 12px; color: #64748B;">Sistem otomatik olarak 15 dakikada bir yedek alır veya şu an kendiniz manuel yedek oluşturabilirsiniz.</p>
+          <button class="btn btn-primary btn-sm" onclick="triggerManualSnapshot('{{.Name}}')">İlk Yedeği Al</button>
+        </div>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- Rollback Confirmation Modal -->
+  <div id="rollback-confirm-modal" class="nested-modal">
+    <div class="nested-modal-content">
+      <h3 style="margin-top: 0; color: #DC2626; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+        <svg style="width: 24px; height: 24px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Sistem Geri Yükleme Onayı
+      </h3>
+      <div style="margin: 16px 0; font-size: 14px; color: #475569; line-height: 1.5;">
+        Bu işlem, sistemi <strong id="rollback-target-date" style="color: #1E293B;"></strong> tarihindeki durumuna geri döndürecektir.
+        <br/><br/>
+        <span style="color: #DC2626; font-weight: 600;">ÖNEMLİ:</span> Bu işlem <span id="rollback-target-date-2" style="font-weight: 600;"></span> tarihinden sonraki tüm değişiklikleri geri alacak. Emin misiniz?
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <button class="btn btn-secondary" onclick="triggerCloseRollback()">İptal</button>
+        <button class="btn btn-danger" id="confirm-rollback-btn" onclick="executeRollback()">Evet, Geri Dön</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tab Switching
+    function switchDetailTab(btn, tabId) {
+      const container = btn.closest('.vm-detail-inner');
+      container.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      container.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      
+      btn.classList.add('active');
+      container.querySelector('#' + tabId).classList.add('active');
+      
+      // Close any open popovers when switching tabs
+      closeAllPopovers();
+    }
+
+    // Popover Management
+    function toggleTimelinePopover(event, popoverId) {
+      event.stopPropagation();
+      const popover = document.getElementById(popoverId);
+      const isAlreadyShow = popover.classList.contains('show');
+      
+      closeAllPopovers();
+      
+      if (!isAlreadyShow) {
+        popover.classList.add('show');
+      }
+    }
+    
+    function closeTimelinePopover(event, popoverId) {
+      event.stopPropagation();
+      const popover = document.getElementById(popoverId);
+      if (popover) popover.classList.remove('show');
+    }
+
+    function closeAllPopovers() {
+      document.querySelectorAll('.timeline-popover').forEach(el => {
+        el.classList.remove('show');
+      });
+    }
+
+    // Close popovers on click outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.timeline-point-container')) {
+        closeAllPopovers();
+      }
+    });
+
+    // Create Manual Snapshot
+    function triggerManualSnapshot(vmName) {
+      const overlay = document.getElementById('snapshot-loading');
+      const text = document.getElementById('snapshot-loading-text');
+      
+      text.innerText = "Yedek alınıyor, lütfen bekleyin...";
+      overlay.classList.add('show');
+      closeAllPopovers();
+
+      fetch('/api/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vm: vmName })
+      })
+      .then(resp => {
+        if (!resp.ok) {
+          return resp.text().then(txt => { throw new Error(txt); });
+        }
+        return resp.json();
+      })
+      .then(data => {
+        // Success: reload the details view modal
+        refreshVMDetail(vmName);
+      })
+      .catch(err => {
+        overlay.classList.remove('show');
+        alert("Yedek alınamadı: " + err.message);
+      });
+    }
+
+    // Rollback confirmation
+    targetSnapshotId = null;
+    currentVMName = '{{.Name}}';
+    isVMRunning = '{{.Status}}' === 'running';
+
+    function triggerOpenRollback(snapId, dateStr) {
+      targetSnapshotId = snapId;
+      document.getElementById('rollback-target-date').innerText = dateStr;
+      document.getElementById('rollback-target-date-2').innerText = dateStr;
+      document.getElementById('rollback-confirm-modal').classList.add('show');
+      closeAllPopovers();
+    }
+
+    function triggerCloseRollback() {
+      targetSnapshotId = null;
+      document.getElementById('rollback-confirm-modal').classList.remove('show');
+    }
+
+    function executeRollback() {
+      if (!targetSnapshotId) return;
+
+      const modal = document.getElementById('rollback-confirm-modal');
+      modal.classList.remove('show');
+
+      const overlay = document.getElementById('snapshot-loading');
+      const text = document.getElementById('snapshot-loading-text');
+
+      if (isVMRunning) {
+        text.innerText = "Geri dönülüyor, VM yeniden başlatılacak...";
+      } else {
+        text.innerText = "Geri dönülüyor, lütfen bekleyin...";
+      }
+      overlay.classList.add('show');
+
+      fetch(`/api/snapshots/${targetSnapshotId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true })
+      })
+      .then(resp => {
+        if (!resp.ok) {
+          return resp.text().then(txt => { throw new Error(txt); });
+        }
+        return resp.json();
+      })
+      .then(data => {
+        alert("Sistem başarıyla geri yüklendi: " + data.message);
+        // Reload detail view to update snapshot list
+        refreshVMDetail(currentVMName);
+        
+        // Also refresh dashboard background
+        if (typeof htmx !== 'undefined') {
+          htmx.trigger('#dashboard-content', 'load');
+        }
+      })
+      .catch(err => {
+        overlay.classList.remove('show');
+        alert("Geri yükleme başarısız oldu: " + err.message);
+      });
+    }
+
+    function refreshVMDetail(vmName) {
+      fetch(`/api/vms/${vmName}/detail`)
+        .then(r => r.text())
+        .then(html => {
+          document.getElementById('vm-detail-modal-body').innerHTML = html;
+        })
+        .catch(err => {
+          document.getElementById('vm-detail-modal-body').innerText = 'Yenilenirken hata oluştu: ' + err;
+        });
+    }
+  </script>
+</div>

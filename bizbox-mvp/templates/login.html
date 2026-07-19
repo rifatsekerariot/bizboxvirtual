@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BizBox - Giriş Yap</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: var(--bg-color);
+      margin: 0;
+      font-family: var(--font-ui);
+    }
+    .login-container {
+      width: 100%;
+      max-width: 400px;
+      padding: 16px;
+    }
+    .login-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-card);
+      padding: 32px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .login-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent-color);
+      margin-bottom: 8px;
+    }
+    .login-header p {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .alert-danger {
+      background-color: #FEF2F2;
+      border: 1px solid #FCA5A5;
+      color: var(--error-color);
+      padding: 12px;
+      border-radius: var(--radius-btn);
+      font-size: 13px;
+      margin-bottom: 16px;
+      font-weight: 500;
+      text-align: center;
+    }
+    .btn-login {
+      width: 100%;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <h1>BizBox</h1>
+        <p>Yönetim paneline erişmek için giriş yapın</p>
+      </div>
+      
+      {{if .Error}}
+      <div class="alert-danger" id="login-error">
+        {{.Error}}
+      </div>
+      {{end}}
+      
+      <form action="/api/login" method="POST">
+        {{if .Show2FA}}
+        <input type="hidden" name="username" value="{{.Username}}">
+        <input type="hidden" name="password" value="{{.Password}}">
+        <div class="form-group">
+          <label for="two_factor_code">İki Adımlı Doğrulama Kodu (2FA)</label>
+          <input type="text" id="two_factor_code" name="two_factor_code" required placeholder="123456" autofocus autocomplete="one-time-code" style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color);">
+        </div>
+        {{else}}
+        <div class="form-group">
+          <label for="username">Kullanıcı Adı</label>
+          <input type="text" id="username" name="username" required placeholder="admin" autofocus autocomplete="username" value="{{if .Username}}{{.Username}}{{end}}">
+        </div>
+        <div class="form-group">
+          <label for="password">Şifre</label>
+          <input type="password" id="password" name="password" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        {{end}}
+        <button type="submit" class="btn btn-primary btn-login" id="login-submit-btn">Giriş Yap</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{{if .Error}}
+<div class="wizard-error">
+  {{.Error}}
+</div>
+{{end}}
+
+<form hx-post="/api/vms" hx-target="#wizard-modal-body" onsubmit="disableSubmitButton(this)">
+  <input type="hidden" name="name" value="{{.Name}}">
+  <input type="hidden" name="image" value="{{.Image}}">
+  <input type="hidden" name="cpu" value="{{.CPU}}">
+  <input type="hidden" name="ram" value="{{.RAM}}">
+
+  <div class="summary-card">
+    <div class="summary-row">
+      <span class="summary-label">Sistem Adı</span>
+      <span class="summary-value font-mono">{{.Name}}</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">İşletim Sistemi / İmaj</span>
+      <span class="summary-value font-mono">{{.Image}}</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">CPU Limiti</span>
+      <span class="summary-value font-mono">{{.CPU}} vCPU</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-label">Bellek Limiti</span>
+      <span class="summary-value font-mono">{{.RAM}} GiB</span>
+    </div>
+  </div>
+
+  <div class="wizard-footer">
+    <button type="button" class="btn btn-secondary" hx-post="/api/wizard/step2" hx-target="#wizard-modal-body" hx-vals='{"name": "{{.Name}}", "image": "{{.Image}}"}'>Geri</button>
+    <button type="submit" class="btn btn-primary" id="create-vm-submit-btn">Oluştur</button>
+  </div>
+</form>

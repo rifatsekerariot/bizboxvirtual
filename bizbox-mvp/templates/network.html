@@ -1,0 +1,276 @@
+<div class="content-card" hx-get="/api/network/segments" hx-trigger="segments-updated from:body" hx-swap="outerHTML">
+  
+  <!-- Tab Headers -->
+  <div class="tabs-header" style="display: flex; gap: 16px; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; padding-bottom: 0;">
+    <button class="tab-link active" onclick="switchNetworkTab(event, 'tab-segments')">
+      Ağ Segmentasyonu
+    </button>
+    <button class="tab-link" onclick="switchNetworkTab(event, 'tab-qos')">
+      Trafik Önceliği (QoS)
+    </button>
+  </div>
+
+  <!-- Tab Content: Segments -->
+  <div id="tab-segments" class="tab-panel">
+    <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <div>
+        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Ağ Segmentasyonu Yönetimi</h2>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Open vSwitch (OVS) entegrasyonu ile VLAN tabanlı ağ segmentleri</p>
+      </div>
+      <button class="btn btn-primary" onclick="openSegmentModal()">Yeni Segment</button>
+    </div>
+
+    {{if .Segments}}
+    <div class="status-grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
+      {{range .Segments}}
+      <div class="status-card" style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px;">
+        <div>
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+            <span style="font-weight: 600; font-size: 15px; color: var(--text-primary);">{{.Name}}</span>
+            <span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600;">VLAN {{.VlanID}}</span>
+          </div>
+          
+          <div style="margin-top: 10px;">
+            <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.5px; display: block; margin-bottom: 8px; text-transform: uppercase;">Atanmış Sistemler</span>
+            {{if .VMs}}
+            <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px;">
+              {{range .VMs}}
+              <li style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-primary); background-color: var(--bg-color); padding: 6px 10px; border-radius: var(--radius-btn); border: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="width: 8px; height: 8px; background-color: var(--success-color); border-radius: 50%; display: inline-block;"></span>
+                  <span style="font-weight: 500; font-family: var(--font-mono);">{{.}}</span>
+                </div>
+              </li>
+              {{end}}
+            </ul>
+            {{else}}
+            <div style="font-size: 12px; color: var(--text-secondary); font-style: italic; padding: 12px 0; text-align: center; border: 1px dashed var(--border-color); border-radius: var(--radius-btn);">
+              Atanmış sistem yok
+            </div>
+            {{end}}
+          </div>
+        </div>
+        
+        <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span class="badge" style="display: inline-flex; align-items: center; gap: 6px; background-color: rgba(22, 163, 74, 0.1); color: var(--success-color); font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px;">
+            🔒 İzole
+          </span>
+          <span style="font-size: 11px; color: var(--text-secondary);">Varsayılan Engel</span>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <!-- Empty State for Segments -->
+    <div class="empty-state" style="padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: var(--radius-card);">
+      <div style="font-size: 40px; margin-bottom: 12px;">🌐</div>
+      <h3 style="font-family: var(--font-ui); font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Henüz Ağ Segmenti Yok</h3>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Sanal makinelerinizi izole gruplara ayırmak için ilk ağ segmentinizi oluşturun.</p>
+      <button class="btn btn-primary" onclick="openSegmentModal()">Ağ Segmenti Oluştur</button>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- Tab Content: QoS -->
+  <div id="tab-qos" class="tab-panel" style="display: none;">
+    <div class="content-card-header" style="margin-bottom: 24px;">
+      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Trafik Önceliklendirme (QoS)</h2>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makineler ve ağ segmentleri için HTB (Hierarchical Token Bucket) qdisc kuyruk kuralları</p>
+    </div>
+
+    <!-- Segment QoS Table -->
+    <div style="margin-bottom: 32px;">
+      <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <span>🌐 Ağ Segmentleri Öncelikleri</span>
+      </h3>
+      <div class="table-responsive">
+        <table class="vm-table">
+          <thead>
+            <tr>
+              <th>Segment Adı</th>
+              <th>VLAN ID</th>
+              <th>Garanti Bant Genişliği</th>
+              <th>Öncelik Seçimi</th>
+              <th style="width: 120px;">Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{if .Segments}}
+              {{range .Segments}}
+                {{$name := .Name}}
+                {{$priority := index $.QosRules $name}}
+                {{if eq $priority ""}}{{$priority = "normal"}}{{end}}
+                <tr>
+                  <td class="font-bold">{{$name}}</td>
+                  <td class="font-mono">VLAN {{.VlanID}}</td>
+                  <td>
+                    {{if eq $priority "high"}}
+                      <span style="color: var(--success-color); font-weight: 600;">80 Mbps (Yüksek)</span>
+                    {{else if eq $priority "low"}}
+                      <span style="color: var(--warning-color); font-weight: 600;">2 Mbps (Düşük, Limit: 10M)</span>
+                    {{else}}
+                      <span style="color: var(--text-secondary);">20 Mbps (Normal)</span>
+                    {{end}}
+                  </td>
+                  <td>
+                    <form hx-post="/api/qos/rules" hx-target="#feedback-{{$name}}" hx-trigger="change">
+                      <input type="hidden" name="target" value="{{$name}}">
+                      <div class="segmented-control">
+                        <input type="radio" id="qos-low-{{$name}}" name="priority" value="low" {{if eq $priority "low"}}checked{{end}} style="display:none;">
+                        <label for="qos-low-{{$name}}" class="qos-btn qos-low-btn">Düşük</label>
+
+                        <input type="radio" id="qos-normal-{{$name}}" name="priority" value="normal" {{if eq $priority "normal"}}checked{{end}} style="display:none;">
+                        <label for="qos-normal-{{$name}}" class="qos-btn qos-normal-btn">Normal</label>
+
+                        <input type="radio" id="qos-high-{{$name}}" name="priority" value="high" {{if eq $priority "high"}}checked{{end}} style="display:none;">
+                        <label for="qos-high-{{$name}}" class="qos-btn qos-high-btn">Yüksek</label>
+                      </div>
+                    </form>
+                  </td>
+                  <td>
+                    <div id="feedback-{{$name}}" style="min-height: 20px;"></div>
+                  </td>
+                </tr>
+              {{end}}
+            {{else}}
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Henüz ağ segmenti oluşturulmadı.</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VM QoS Table -->
+    <div style="margin-bottom: 32px;">
+      <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <span>💻 Sanal Makine Öncelikleri</span>
+      </h3>
+      <div class="table-responsive">
+        <table class="vm-table">
+          <thead>
+            <tr>
+              <th>Sanal Makine</th>
+              <th>Ağ Segmenti</th>
+              <th>Efektif Bant Genişliği</th>
+              <th>Öncelik Seçimi</th>
+              <th style="width: 120px;">Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{if .AllVMs}}
+              {{range .AllVMs}}
+                {{$vmName := .}}
+                {{$segName := index $.VmToSegment $vmName}}
+                
+                {{/* Determine direct rule */}}
+                {{$directPriority := index $.QosRules $vmName}}
+                
+                {{/* Determine inherited rule from segment */}}
+                {{$inheritedPriority := ""}}
+                {{if $segName}}
+                  {{$inheritedPriority = index $.QosRules $segName}}
+                {{end}}
+                
+                {{/* Compute effective priority */}}
+                {{$effectivePriority := "normal"}}
+                {{$isInherited := false}}
+                {{if ne $directPriority ""}}
+                  {{$effectivePriority = $directPriority}}
+                {{else if ne $inheritedPriority ""}}
+                  {{$effectivePriority = $inheritedPriority}}
+                  {{$isInherited = true}}
+                {{end}}
+                
+                <tr>
+                  <td class="font-bold font-mono">{{$vmName}}</td>
+                  <td>
+                    {{if $segName}}
+                      <span style="font-weight: 500;">{{$segName}}</span>
+                    {{else}}
+                      <span style="color: var(--text-secondary); font-style: italic;">Segment Dışı</span>
+                    {{end}}
+                  </td>
+                  <td>
+                    {{if eq $effectivePriority "high"}}
+                      <span style="color: var(--success-color); font-weight: 600;">80 Mbps (Yüksek)</span>
+                    {{else if eq $effectivePriority "low"}}
+                      <span style="color: var(--warning-color); font-weight: 600;">2 Mbps (Düşük, Limit: 10M)</span>
+                    {{else}}
+                      <span style="color: var(--text-secondary);">20 Mbps (Normal)</span>
+                    {{end}}
+                    {{if $isInherited}}
+                      <span style="font-size: 11px; color: var(--text-secondary); background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">(Miras)</span>
+                    {{end}}
+                  </td>
+                  <td>
+                    <form hx-post="/api/qos/rules" hx-target="#feedback-{{$vmName}}" hx-trigger="change">
+                      <input type="hidden" name="target" value="{{$vmName}}">
+                      <div class="segmented-control">
+                        <input type="radio" id="qos-low-{{$vmName}}" name="priority" value="low" {{if eq $directPriority "low"}}checked{{end}} style="display:none;">
+                        <label for="qos-low-{{$vmName}}" class="qos-btn qos-low-btn">Düşük</label>
+
+                        <input type="radio" id="qos-normal-{{$vmName}}" name="priority" value="normal" {{if eq $directPriority ""}}checked{{else if eq $directPriority "normal"}}checked{{end}} style="display:none;">
+                        <label for="qos-normal-{{$vmName}}" class="qos-btn qos-normal-btn">Normal</label>
+
+                        <input type="radio" id="qos-high-{{$vmName}}" name="priority" value="high" {{if eq $directPriority "high"}}checked{{end}} style="display:none;">
+                        <label for="qos-high-{{$vmName}}" class="qos-btn qos-high-btn">Yüksek</label>
+                      </div>
+                    </form>
+                  </td>
+                  <td>
+                    <div id="feedback-{{$vmName}}" style="min-height: 20px;"></div>
+                  </td>
+                </tr>
+              {{end}}
+            {{else}}
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Aktif sanal makine bulunamadı.</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Info Box -->
+    <div style="background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 16px; font-size: 13px; color: var(--text-secondary);">
+      <h4 style="font-weight: 600; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+        ℹ️ Bant Genişliği & QoS Politikaları Açıklaması
+      </h4>
+      <p style="margin-bottom: 8px;">Linux HTB (Hierarchical Token Bucket) qdisc kuralları arka planda veth arayüzlerine uygulanır:</p>
+      <ul style="padding-left: 20px; display: flex; flex-direction: column; gap: 4px;">
+        <li><strong>Yüksek Öncelik (High):</strong> Yoğun zamanlarda <strong>80 Mbps</strong> garanti bant genişliği atanır, hat boşsa 100 Mbps'e kadar çıkabilir.</li>
+        <li><strong>Normal Öncelik (Normal):</strong> Yoğun zamanlarda <strong>20 Mbps</strong> standart garanti bant genişliği atanır, hat boşsa 100 Mbps'e kadar çıkabilir.</li>
+        <li><strong>Düşük Öncelik (Low):</strong> Yoğun zamanlarda <strong>2 Mbps</strong> minimum garanti atanır ve maksimum hız <strong>10 Mbps</strong> ile sınırlandırılır (Hız Limiti).</li>
+      </ul>
+      <p style="margin-top: 8px; font-style: italic;">Not: Sanal makineler, atanmış doğrudan bir öncelikleri yoksa, üye oldukları ağ segmentinin öncelik kuralını miras alırlar.</p>
+    </div>
+  </div>
+
+  <script>
+    function switchNetworkTab(event, tabId) {
+      if (event) event.preventDefault();
+      document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.tab-link').forEach(t => {
+        t.classList.remove('active');
+      });
+      
+      document.getElementById(tabId).style.display = 'block';
+      
+      const btn = event ? event.currentTarget : document.querySelector(".tab-link[onclick*='" + tabId + "']");
+      if (btn) {
+        btn.classList.add('active');
+      }
+      
+      localStorage.setItem('activeNetworkTab', tabId);
+    }
+
+    // Restore active tab after HTMX swap
+    (function() {
+      const activeTab = localStorage.getItem('activeNetworkTab') || 'tab-segments';
+      switchNetworkTab(null, activeTab);
+    })();
+  </script>
+</div>
