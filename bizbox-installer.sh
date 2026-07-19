@@ -180,6 +180,10 @@ mount --bind /dev/pts  /target/dev/pts
 mount -t proc  proc    /target/proc
 mount -t sysfs sysfs   /target/sys
 
+if [ -d /sys/firmware/efi/efivars ]; then
+  mount --bind /sys/firmware/efi/efivars /target/sys/firmware/efi/efivars || true
+fi
+
 # ---------------------------------------------------------------------------
 # 3b. Kernel ve initrd: squashfs /boot icermez
 #     Live medium'dan kopyala (casper vmlinuz/initrd olarak konumlanir)
@@ -248,8 +252,15 @@ if [ "$IS_UEFI" -eq 1 ]; then
     --target=x86_64-efi \
     --efi-directory=/boot/efi \
     --bootloader-id=BizBox \
+    --recheck
+
+  # Ayrica removable path kopyasini da garantiye al (VirtualBox/bazi anakartlar icin)
+  chroot /target grub-install \
+    --target=x86_64-efi \
+    --efi-directory=/boot/efi \
     --removable \
     --recheck
+
 else
   chroot /target grub-install \
     --target=i386-pc \
@@ -331,10 +342,11 @@ chroot /target ovs-vsctl show 2>/dev/null | grep -q "br-int" || \
 # ---------------------------------------------------------------------------
 # Cleanup ve reboot
 # ---------------------------------------------------------------------------
-umount -lf /target/dev/pts  2>/dev/null || true
-umount -lf /target/dev      2>/dev/null || true
-umount -lf /target/proc     2>/dev/null || true
-umount -lf /target/sys      2>/dev/null || true
+umount -f /target/sys/firmware/efi/efivars || true
+umount -f /target/sys || true
+umount -f /target/proc || true
+umount -f /target/dev/pts || true
+umount -f /target/dev || true
 [ "$IS_UEFI" -eq 1 ] && umount -lf /target/boot/efi 2>/dev/null || true
 sync
 umount /target
