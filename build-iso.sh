@@ -67,7 +67,6 @@ autoinstall:
     - incus
     - incus-client
     - sqlite3
-    - tc
     - iptables
   user-data:
     disable_root: false
