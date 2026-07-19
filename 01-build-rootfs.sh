@@ -69,7 +69,6 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
     linux-image-generic \
     linux-firmware \
     casper \
-    lupin-casper \
     udev \
     systemd systemd-sysv \
     dbus \
