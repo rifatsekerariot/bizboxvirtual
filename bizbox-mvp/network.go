@@ -285,19 +285,55 @@ func handleCreateSegmentAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-assign VLAN ID (max existing vlan_id + 10, default to 10 if none exist)
-	var maxVlan int
-	err := db.QueryRow("SELECT COALESCE(MAX(vlan_id), 0) FROM network_segments").Scan(&maxVlan)
-	if err != nil {
-		maxVlan = 0
+	// Determine VLAN ID
+	var vlanID int
+	var vlanStr string
+
+	if r.Header.Get("HX-Request") == "true" || strings.Contains(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		vlanStr = r.FormValue("vlan_id")
+	} else {
+		// Assuming JSON logic isn't strictly needing explicit vlan right now, or we parse it
+		// But let's just support form for now
 	}
-	vlanID := maxVlan + 10
-	if vlanID < 10 {
-		vlanID = 10
+
+	if vlanStr != "" {
+		vStrTrim := strings.TrimSpace(vlanStr)
+		if vStrTrim != "" {
+			importStrConv := true
+			_ = importStrConv
+			var v int
+			fmt.Sscanf(vStrTrim, "%d", &v)
+			if v < 2 || v > 4094 {
+				http.Error(w, "Geçersiz VLAN ID. Lütfen 2-4094 arası bir değer girin.", http.StatusBadRequest)
+				return
+			}
+			
+			// Check if exists
+			var count int
+			db.QueryRow("SELECT COUNT(*) FROM network_segments WHERE vlan_id = ?", v).Scan(&count)
+			if count > 0 {
+				http.Error(w, "Bu VLAN ID numarası başka bir ağ segmenti tarafından kullanılıyor.", http.StatusBadRequest)
+				return
+			}
+			vlanID = v
+		}
 	}
-	if vlanID > 4094 {
-		http.Error(w, "Maksimum VLAN ID sınırına (4094) ulaşıldı", http.StatusBadRequest)
-		return
+
+	if vlanID == 0 {
+		// Auto-assign VLAN ID (max existing vlan_id + 10, default to 10 if none exist)
+		var maxVlan int
+		err := db.QueryRow("SELECT COALESCE(MAX(vlan_id), 0) FROM network_segments").Scan(&maxVlan)
+		if err != nil {
+			maxVlan = 0
+		}
+		vlanID = maxVlan + 10
+		if vlanID < 10 {
+			vlanID = 10
+		}
+		if vlanID > 4094 {
+			http.Error(w, "Maksimum VLAN ID sınırına (4094) ulaşıldı", http.StatusBadRequest)
+			return
+		}
 	}
 
 	err = CreateSegment(name, vlanID)

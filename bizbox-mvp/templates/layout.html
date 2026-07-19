@@ -154,10 +154,13 @@
       <form id="create-segment-form" hx-post="/api/network/segments" hx-target="#segment-form-response" onsubmit="handleSegmentSubmit(event)">
         <div class="modal-body">
           <div id="segment-form-response"></div>
-          <div>
+          <div style="margin-bottom: 15px;">
             <label for="segment-name-input" style="display: block; font-weight: 500; margin-bottom: 6px; color: var(--text-primary);">Segment Adı</label>
             <input type="text" id="segment-name-input" name="name" required placeholder="Örn: Pazarlama, Test Ağı" class="form-control" style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color);" autocomplete="off">
-            <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-top: 6px;">VLAN ID otomatik olarak sıradaki boş değer olarak atanacaktır.</span>
+          </div>
+          <div>
+            <label for="segment-vlan" style="display: block; font-weight: 500; margin-bottom: 6px; color: var(--text-primary);">VLAN ID (Opsiyonel, 2-4094 arası)</label>
+            <input type="number" id="segment-vlan" name="vlan_id" class="form-control" placeholder="Boş bırakırsanız otomatik atanır" min="2" max="4094" style="width: 100%; padding: 8px; border-radius: var(--radius-btn); border: 1px solid var(--border-color); background-color: #fff; color: var(--text-primary);">
           </div>
         </div>
         <div class="modal-footer">
