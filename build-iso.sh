@@ -52,6 +52,9 @@ rm -f "$TEMP_DIR/$SQUASH_FILE"
 
 # 7. Customize target system via chroot (pre-install all dependencies and BizBox)
 echo "Chrooting and customizing target system..."
+# Ensure mount directories exist
+mkdir -p "$SQUASHFS_DIR/dev" "$SQUASHFS_DIR/dev/pts" "$SQUASHFS_DIR/proc" "$SQUASHFS_DIR/sys" "$SQUASHFS_DIR/etc"
+
 # Bind mount system directories to chroot for network and process support
 mount --bind /dev "$SQUASHFS_DIR/dev"
 mount --bind /dev/pts "$SQUASHFS_DIR/dev/pts"
