@@ -12,9 +12,7 @@ fi
 UBUNTU_ISO_URL="https://releases.ubuntu.com/24.04/$LATEST_ISO_FILE"
 ORIGINAL_ISO="$LATEST_ISO_FILE"
 CUSTOM_ISO="bizbox-installer.iso"
-BUILD_DIR="./iso-build"
-ISO_MOUNT_DIR="./iso-mount"
-ISO_FILES_DIR="./iso-files"
+TEMP_DIR="./iso-temp-files"
 
 echo "====== Starting BizBox ISO Build ======"
 
@@ -35,30 +33,21 @@ if [ ! -f "$ORIGINAL_ISO" ]; then
   wget -O "$ORIGINAL_ISO" "$UBUNTU_ISO_URL"
 fi
 
-# 4. Prepare directory structure
-echo "Preparing build directories..."
-rm -rf "$BUILD_DIR" "$ISO_MOUNT_DIR" "$ISO_FILES_DIR"
-mkdir -p "$ISO_MOUNT_DIR" "$ISO_FILES_DIR"
+# 4. Prepare temporary directory structure
+echo "Preparing temporary directories..."
+rm -rf "$TEMP_DIR"
+mkdir -p "$TEMP_DIR/payload"
+mkdir -p "$TEMP_DIR/nocloud"
 
-# 5. Extract ISO
-echo "Extracting base ISO..."
-xorriso -osirrox on -indev "$ORIGINAL_ISO" -extract / "$ISO_FILES_DIR"
-chmod -R u+w "$ISO_FILES_DIR"
+# 5. Copy payload (compiled binary and assets)
+echo "Preparing BizBox payload..."
+cp -r bizbox-mvp/bizbox-mvp bizbox-mvp/static bizbox-mvp/templates "$TEMP_DIR/payload/"
 
-# 6. Embed payload (binary and assets)
-echo "Adding BizBox payload to ISO..."
-PAYLOAD_DIR="$ISO_FILES_DIR/payload"
-mkdir -p "$PAYLOAD_DIR"
-cp -r bizbox-mvp/bizbox-mvp bizbox-mvp/static bizbox-mvp/templates "$PAYLOAD_DIR/"
+# 6. Create Autoinstall configuration (user-data & meta-data)
+echo "Creating Autoinstall configurations..."
+touch "$TEMP_DIR/nocloud/meta-data"
 
-# 7. Configure Ubuntu Autoinstall (user-data & meta-data)
-echo "Creating Autoinstall configuration..."
-NOCLOUD_DIR="$ISO_FILES_DIR/nocloud"
-mkdir -p "$NOCLOUD_DIR"
-
-touch "$NOCLOUD_DIR/meta-data"
-
-cat <<'EOF' > "$NOCLOUD_DIR/user-data"
+cat <<'EOF' > "$TEMP_DIR/nocloud/user-data"
 #cloud-config
 autoinstall:
   version: 1
@@ -125,30 +114,27 @@ autoinstall:
       curtin in-target -- systemctl enable bizbox-mvp.service
 EOF
 
-# 8. Modify Bootloader to force autoinstall
-echo "Modifying bootloader configurations..."
-# Grub (for UEFI)
-if [ -f "$ISO_FILES_DIR/boot/grub/grub.cfg" ]; then
-  sed -i 's/set default="0"/set default="0"\nset timeout=1/' "$ISO_FILES_DIR/boot/grub/grub.cfg"
-  sed -i 's/menuentry "Ubuntu Server"/menuentry "Autoinstall BizBox Server"/' "$ISO_FILES_DIR/boot/grub/grub.cfg"
-  sed -i 's/---/autoinstall ds=nocloud;s=\/cdrom\/nocloud\/ ---/' "$ISO_FILES_DIR/boot/grub/grub.cfg"
-fi
+# 7. Extract and modify grub.cfg from the original ISO
+echo "Modifying bootloader configuration..."
+xorriso -osirrox on -indev "$ORIGINAL_ISO" -extract /boot/grub/grub.cfg "$TEMP_DIR/grub.cfg"
+chmod +w "$TEMP_DIR/grub.cfg"
 
-# 9. Build Bootable ISO
-echo "Building final bootable ISO..."
-xorriso -as mkisofs \
-  -r -V "BIZBOX_INSTALLER" \
-  -J -joliet-long \
-  -b boot/grub/i386-pc/eltorito.img \
-  -c boot.catalog \
-  -boot-load-size 4 -boot-info-table -no-emul-boot \
-  -eltorito-alt-boot \
-  -e boot/grub/efi.img \
-  -no-emul-boot \
-  -o "$CUSTOM_ISO" \
-  "$ISO_FILES_DIR"
+sed -i 's/set default="0"/set default="0"\nset timeout=1/' "$TEMP_DIR/grub.cfg"
+sed -i 's/menuentry "Ubuntu Server"/menuentry "Autoinstall BizBox Server"/' "$TEMP_DIR/grub.cfg"
+sed -i 's/---/autoinstall ds=nocloud;s=\/cdrom\/nocloud\/ ---/' "$TEMP_DIR/grub.cfg"
+
+# 8. Remaster the ISO retaining all original boot capabilities (hybrid MBR/GPT + EFI)
+echo "Remastering bootable ISO..."
+rm -f "$CUSTOM_ISO"
+xorriso -dev "$ORIGINAL_ISO" \
+  -boot_image any keep \
+  -outdev "$CUSTOM_ISO" \
+  -map "$TEMP_DIR/payload" /payload \
+  -map "$TEMP_DIR/nocloud" /nocloud \
+  -map "$TEMP_DIR/grub.cfg" /boot/grub/grub.cfg \
+  -boot_image any replay
 
 # Cleanup
-rm -rf "$BUILD_DIR" "$ISO_MOUNT_DIR" "$ISO_FILES_DIR"
+rm -rf "$TEMP_DIR"
 
-echo "====== ISO Build Completed: $CUSTOM_ISO ======"
+echo "====== ISO Build Completed Successfully: $CUSTOM_ISO ======"
