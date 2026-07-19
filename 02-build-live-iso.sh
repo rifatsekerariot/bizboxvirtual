@@ -38,12 +38,18 @@ mkdir -p "$ISO_TREE/boot/grub"
 mkdir -p "$ISO_TREE/EFI/BOOT"
 
 cat > "$ISO_TREE/boot/grub/grub.cfg" <<'GRUB'
-set timeout=3
+set timeout=5
 set default=0
 
 menuentry "BizBox Installer by ARIOT" {
     search --no-floppy --file --set=root /casper/vmlinuz
-    linux /casper/vmlinuz boot=casper quiet ---
+    linux /casper/vmlinuz boot=casper nomodeset noapic quiet ---
+    initrd /casper/initrd
+}
+
+menuentry "BizBox Installer (debug - verbose)" {
+    search --no-floppy --file --set=root /casper/vmlinuz
+    linux /casper/vmlinuz boot=casper nomodeset noapic
     initrd /casper/initrd
 }
 GRUB

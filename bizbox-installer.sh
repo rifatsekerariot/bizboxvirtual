@@ -269,7 +269,7 @@ search --no-floppy --fs-uuid --set=root $ROOT_UUID
 
 menuentry "BizBox Hypervisor" {
     search --no-floppy --fs-uuid --set=root $ROOT_UUID
-    linux  /boot/$KERNEL_FILE root=UUID=$ROOT_UUID ro quiet
+    linux  /boot/$KERNEL_FILE root=UUID=$ROOT_UUID ro nomodeset noapic quiet
     initrd /boot/$INITRD_FILE
 }
 GRUBCFG
