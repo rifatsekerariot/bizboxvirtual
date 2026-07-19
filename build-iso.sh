@@ -182,12 +182,22 @@ EOF
 # 7. Create custom grub.cfg
 echo "Creating custom bootloader configuration..."
 cat <<'GRUB' > "$TEMP_DIR/grub.cfg"
-set timeout=1
+set timeout=3
 set default=0
 
 loadfont unicode
 
-menuentry "BizBox Installer by ARIOT" {
+# Search for the boot partition of an already installed BizBox/Ubuntu OS
+search --no-floppy --file --set=installed_os /boot/grub/grub.cfg
+
+if [ -n "${installed_os}" ]; then
+    menuentry "Boot from Local Disk (BizBox OS)" {
+        set root="${installed_os}"
+        configfile /boot/grub/grub.cfg
+    }
+fi
+
+menuentry "BizBox Installer by ARIOT (Auto-install)" {
 	set gfxpayload=keep
 	linux	/casper/vmlinuz quiet autoinstall ds=nocloud\;s=/cdrom/nocloud/ console=ttyS0 ---
 	initrd	/casper/initrd
