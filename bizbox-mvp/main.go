@@ -930,35 +930,59 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	consoleType := "vga"
 	if string(inst.Type) == string(api.InstanceTypeContainer) {
-		consoleType = "console"
+		// Use ExecInstance for containers to get an automatic root shell
+		req := api.InstanceExecPost{
+			Command:     []string{"su", "-", "root"},
+			Environment: map[string]string{"TERM": "xterm-256color"},
+			WaitForWS:   true,
+			Interactive: true,
+		}
+		
+		execArgs := incus.InstanceExecArgs{
+			Stdin:  wsWrapper,
+			Stdout: wsWrapper,
+			Stderr: wsWrapper,
+			Control: func(conn *websocket.Conn) {
+				// Dummy control channel handler
+			},
+		}
+		
+		op, err := c.ExecInstance(vmName, req, &execArgs)
+		if err != nil {
+			log.Printf("Console WS ExecInstance error: %v", err)
+			conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
+			return
+		}
+		
+		err = op.Wait()
+		if err != nil {
+			log.Printf("Console WS Exec wait error: %v", err)
+		}
+	} else {
+		// Use ConsoleInstance with vga for virtual machines
+		consolePost := api.InstanceConsolePost{
+			Type: "vga",
+		}
+	
+		consoleArgs := incus.InstanceConsoleArgs{
+			Terminal:          wsWrapper,
+			ConsoleDisconnect: disconnectChan,
+		}
+	
+		op, err := c.ConsoleInstance(vmName, consolePost, &consoleArgs)
+		if err != nil {
+			log.Printf("Console WS ConsoleInstance error: %v", err)
+			conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
+			return
+		}
+	
+		err = op.Wait()
+		if err != nil {
+			log.Printf("Console WS wait error: %v", err)
+		}
 	}
-
-	consolePost := api.InstanceConsolePost{
-		Type: consoleType,
-	}
-
-	consoleArgs := incus.InstanceConsoleArgs{
-		Terminal:          wsWrapper,
-		Control: func(conn *websocket.Conn) {
-			// Dummy control function required for containers
-			// In the future, resize events can be handled here
-		},
-		ConsoleDisconnect: disconnectChan,
-	}
-
-	op, err := c.ConsoleInstance(vmName, consolePost, &consoleArgs)
-	if err != nil {
-		log.Printf("Console WS ConsoleInstance error: %v", err)
-		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
-		return
-	}
-
-	err = op.Wait()
-	if err != nil {
-		log.Printf("Console WS wait error: %v", err)
-	}
+	
 	log.Printf("Console WS session ended for %s", vmName)
 }
 
