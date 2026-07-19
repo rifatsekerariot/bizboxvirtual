@@ -172,6 +172,36 @@ mount --bind /dev/pts /target/dev/pts
 mount -t proc proc /target/proc
 mount -t sysfs sysfs /target/sys
 
+# ---------------------------------------------------------------------------
+# 3b. Kernel ve initrd: squashfs /boot icermez, onlari /casper/ den kopyala
+# ---------------------------------------------------------------------------
+mkdir -p /target/boot
+
+# /lib/modules altindan versiyon numarasini bul
+KVER=$(ls /target/lib/modules/ 2>/dev/null | sort -V | tail -n1 || ls /lib/modules/ | sort -V | tail -n1)
+if [ -z "$KVER" ]; then
+  KVER="$(uname -r)"
+fi
+
+KERNEL_FILE="vmlinuz-${KVER}"
+INITRD_FILE="initrd.img-${KVER}"
+
+# Onceden kopyalanmamissa /casper/ den al
+if [ ! -f "/target/boot/$KERNEL_FILE" ]; then
+  cp /casper/vmlinuz "/target/boot/$KERNEL_FILE"
+fi
+
+# initrd: casper/initrd yoksa initramfs-tools ile olustur
+if [ ! -f "/target/boot/$INITRD_FILE" ]; then
+  if [ -f /casper/initrd ]; then
+    cp /casper/initrd "/target/boot/$INITRD_FILE"
+  else
+    chroot /target update-initramfs -c -k "$KVER" || true
+  fi
+fi
+
+echo "DEBUG: Kernel=$KERNEL_FILE  Initrd=$INITRD_FILE"
+
 # fstab
 ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 {
@@ -181,6 +211,7 @@ ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
     echo "UUID=$ESP_UUID /boot/efi vfat umask=0077 0 1"
   fi
 } > /target/etc/fstab
+
 
 echo -e "\t    Kurulum durumu: BOOTLOADER KURULUYOR..."
 
@@ -195,10 +226,8 @@ else
   chroot /target grub-install --target=i386-pc --recheck "/dev/$TARGET_DISK"
 fi
 
-# Kernel ve initrd dosya adlarini degiskenlerle coz (heredoc icinde komut genisletme guvenilir degil)
-KERNEL_FILE=$(basename "$(ls /target/boot/vmlinuz-* 2>/dev/null | sort -V | tail -n1)")
-INITRD_FILE=$(basename "$(ls /target/boot/initrd.img-* 2>/dev/null | sort -V | tail -n1)")
-
+# Kernel ve initrd degiskenleri yukarida zaten set edildi (3b bolumu)
+# Burada sadece dogrulama yapiyoruz
 if [ -z "$KERNEL_FILE" ] || [ -z "$INITRD_FILE" ]; then
   echo "HATA: Kernel veya initrd dosyasi /target/boot/ icinde bulunamadi!"
   ls /target/boot/
@@ -206,6 +235,7 @@ if [ -z "$KERNEL_FILE" ] || [ -z "$INITRD_FILE" ]; then
 fi
 
 echo "DEBUG: Kernel=$KERNEL_FILE Initrd=$INITRD_FILE UUID=$ROOT_UUID"
+
 
 mkdir -p /target/boot/grub
 cat > /target/boot/grub/grub.cfg << GRUBCFG
