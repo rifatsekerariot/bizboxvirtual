@@ -71,8 +71,23 @@ autoinstall:
     - iptables
   user-data:
     disable_root: false
+  early-commands:
+    - |
+      clear > /dev/tty1
+      echo -e "\n\n\n\n\n\n" > /dev/tty1
+      echo -e "\t############################################################" > /dev/tty1
+      echo -e "\t#                                                          #" > /dev/tty1
+      echo -e "\t#                BIZBOX HYPERVISOR INSTALLER               #" > /dev/tty1
+      echo -e "\t#                        by ARIOT                          #" > /dev/tty1
+      echo -e "\t#                                                          #" > /dev/tty1
+      echo -e "\t############################################################" > /dev/tty1
+      echo -e "\n" > /dev/tty1
+      echo -e "\t    Sanal hypervisor sistemi kuruluyor, lutfen bekleyin... " > /dev/tty1
+      echo -e "\t    [Bu islem birkac dakika surebilir]" > /dev/tty1
+      echo -e "\n\t    Kurulum durumu: PAKETLER VE BAGIMLILIKLAR YUKLENIYOR..." > /dev/tty1
   late-commands:
     - |
+      echo -e "\t    Kurulum durumu: BIZBOX DOSYALARI KOPYALANIYOR VE DERLENIYOR..." > /dev/tty1
       # Copy application payload
       mkdir -p /target/opt/bizbox
       cp -r /cdrom/payload/* /target/opt/bizbox/
@@ -128,6 +143,21 @@ autoinstall:
       # Enable systemd service
       curtin in-target -- systemctl daemon-reload
       curtin in-target -- systemctl enable bizbox-mvp.service
+
+      # Final message
+      clear > /dev/tty1
+      echo -e "\n\n\n\n\n\n" > /dev/tty1
+      echo -e "\t############################################################" > /dev/tty1
+      echo -e "\t#                                                          #" > /dev/tty1
+      echo -e "\t#               KURULUM BASARIYLA TAMAMLANDI               #" > /dev/tty1
+      echo -e "\t#                                                          #" > /dev/tty1
+      echo -e "\t############################################################" > /dev/tty1
+      echo -e "\n" > /dev/tty1
+      echo -e "\t    Sistem simdi yeniden baslatiliyor." > /dev/tty1
+      echo -e "\t    Yeniden basladiktan sonra tarayicinizdan erisebilirsiniz:" > /dev/tty1
+      echo -e "\t    http://<sunucu-ip-adresi>:8080" > /dev/tty1
+      echo -e "\n" > /dev/tty1
+      sleep 8
 EOF
 
 # 7. Create custom grub.cfg
@@ -140,7 +170,7 @@ loadfont unicode
 
 menuentry "BizBox Installer by ARIOT" {
 	set gfxpayload=keep
-	linux	/casper/vmlinuz quiet autoinstall ds=nocloud;s=/cdrom/nocloud/ ---
+	linux	/casper/vmlinuz quiet autoinstall ds=nocloud;s=/cdrom/nocloud/ console=ttyS0 ---
 	initrd	/casper/initrd
 }
 GRUB
