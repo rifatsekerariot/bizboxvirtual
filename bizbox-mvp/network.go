@@ -138,28 +138,14 @@ func DeleteSegment(name string) error {
 		return fmt.Errorf("segment bulunamadı: %w", err)
 	}
 
-	// Retrieve VMs assigned to this segment to remove their tags
-	rows, err := db.Query("SELECT vm_name FROM network_segment_vms WHERE segment_name = ?", name)
-	if err == nil {
-		var vms []string
-		for rows.Next() {
-			var vm string
-			if err := rows.Scan(&vm); err == nil {
-				vms = append(vms, vm)
-			}
-		}
-		rows.Close()
-
-		for _, vm := range vms {
-			portName := fmt.Sprintf("veth-%s", vm)
-			// Remove the tag
-			cmd := exec.Command("ovs-vsctl", "remove", "port", portName, "tag", fmt.Sprintf("%d", vlanID))
-			_ = cmd.Run() // ignore error, port might not exist
-		}
+	// Retrieve VMs assigned to this segment to see if it is in use
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM network_segment_vms WHERE segment_name = ?", name).Scan(&count)
+	if err == nil && count > 0 {
+		return fmt.Errorf("bu ağ segmentine atanmış %d adet sanal makine bulunuyor. Lütfen önce onları başka bir ağa taşıyın", count)
 	}
 
-	// Delete from database (network_segment_vms cascades if configured, but let's be explicit)
-	_, _ = db.Exec("DELETE FROM network_segment_vms WHERE segment_name = ?", name)
+	// Delete from database
 	_, err = db.Exec("DELETE FROM network_segments WHERE name = ?", name)
 	if err != nil {
 		return fmt.Errorf("segment silinirken veritabanı hatası: %w", err)
@@ -396,6 +382,12 @@ func handleDeleteSegmentAPI(w http.ResponseWriter, r *http.Request) {
 
 	err := DeleteSegment(segmentName)
 	if err != nil {
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Reswap", "beforeend")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(fmt.Sprintf(`<script>alert("Silinemedi: %v");</script>`, err)))
+			return
+		}
 		http.Error(w, fmt.Sprintf("Segment silinemedi: %v", err), http.StatusInternalServerError)
 		return
 	}
