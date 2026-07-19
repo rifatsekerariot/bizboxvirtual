@@ -32,6 +32,20 @@ echo "Installing build dependencies..."
 apt-get update
 apt-get install -y xorriso squashfs-tools wget curl golang-go git dpkg-dev whois
 
+echo "Adding Zabbly repository to build host (for Incus)..."
+mkdir -p /etc/apt/keyrings/
+curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+cat <<EOF > /etc/apt/sources.list.d/zabbly-incus-stable.sources
+Enabled: yes
+Types: deb
+URIs: https://pkgs.zabbly.com/incus/stable
+Suites: noble
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/zabbly.asc
+EOF
+apt-get update
+
 # ---------------------------------------------------------------------------
 # 2. Compile BizBox Go Application
 # ---------------------------------------------------------------------------
@@ -156,6 +170,19 @@ autoinstall:
         openvswitch-switch zfsutils-linux incus incus-client sqlite3 iptables curl
       curtin in-target -- rm -f /etc/apt/sources.list.d/bizbox-offline.list
       curtin in-target -- rm -rf /opt/bizbox-pool
+
+      echo -e "\t    Kurulum durumu: ZABBLY INCUS DEPOSU EKLENIYOR..." > /dev/tty1
+      curtin in-target -- mkdir -p /etc/apt/keyrings/
+      curtin in-target -- bash -c "curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc"
+      curtin in-target -- bash -c "cat <<EOF > /etc/apt/sources.list.d/zabbly-incus-stable.sources
+Enabled: yes
+Types: deb
+URIs: https://pkgs.zabbly.com/incus/stable
+Suites: noble
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/zabbly.asc
+EOF"
 
       echo -e "\t    Kurulum durumu: BIZBOX DOSYALARI KOPYALANIYOR..." > /dev/tty1
       mkdir -p /target/opt/bizbox

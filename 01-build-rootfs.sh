@@ -64,6 +64,20 @@ echo "====== [4/6] Installing packages inside chroot ======"
 chroot "$ROOTFS_DIR" /bin/bash -c "
   set -e
   export DEBIAN_FRONTEND=noninteractive
+  
+  # Add Zabbly repository for Incus
+  mkdir -p /etc/apt/keyrings/
+  curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+  cat <<EOF > /etc/apt/sources.list.d/zabbly-incus-stable.sources
+Enabled: yes
+Types: deb
+URIs: https://pkgs.zabbly.com/incus/stable
+Suites: noble
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/zabbly.asc
+EOF
+
   apt-get update -qq
   apt-get install -y --no-install-recommends \
     linux-image-generic \

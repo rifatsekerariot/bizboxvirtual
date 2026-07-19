@@ -12,7 +12,21 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 2. Update Packages and Install Dependencies
+# 2. Add Zabbly repository for Incus (Fixes OVS JSON-RPC bugs)
+echo "Adding Zabbly repository for Incus..."
+mkdir -p /etc/apt/keyrings/
+curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+sh -c 'cat <<EOF > /etc/apt/sources.list.d/zabbly-incus-stable.sources
+Enabled: yes
+Types: deb
+URIs: https://pkgs.zabbly.com/incus/stable
+Suites: noble
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/zabbly.asc
+EOF'
+
+# 3. Update Packages and Install Dependencies
 echo "Installing system packages..."
 apt-get update
 apt-get install -y \
