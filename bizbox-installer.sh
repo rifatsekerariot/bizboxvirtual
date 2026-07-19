@@ -185,12 +185,34 @@ ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 echo -e "\t    Kurulum durumu: BOOTLOADER KURULUYOR..."
 
 if [ "$IS_UEFI" -eq 1 ]; then
-  # --no-nvram ve --removable parametrelerini ekleyerek GRUB'ı diske taşınabilir modda yazıyoruz
-  chroot /target grub-install --target=x86_64-efi --efi-directory=/boot/efi --no-nvram --removable --recheck
+  # NVRAM'a boot girişini kayıt ediyoruz (--no-nvram KULLANILMIYOR)
+  # --removable: /EFI/BOOT/BOOTX64.EFI yoluna da yazarak fallback sağlıyor
+  chroot /target grub-install \
+    --target=x86_64-efi \
+    --efi-directory=/boot/efi \
+    --bootloader-id=BizBox \
+    --removable \
+    --recheck
 else
   chroot /target grub-install --target=i386-pc --recheck "/dev/$TARGET_DISK"
 fi
-chroot /target update-grub
+
+# update-grub yerine doğrudan grub.cfg yazıyoruz.
+# update-grub live ortamdaki /proc/cmdline içindeki boot=casper parametresini
+# grub.cfg'ye kopyalar; bu kurulu sistemi de live mod olarak başlatır.
+ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
+mkdir -p /target/boot/grub
+cat > /target/boot/grub/grub.cfg << GRUBCFG
+set default=0
+set timeout=5
+
+loadfont unicode
+
+menuentry "BizBox Hypervisor" {
+    linux /boot/$(basename "$(ls /target/boot/vmlinuz-* | sort -V | tail -n1)") root=UUID=${ROOT_UUID} ro quiet splash
+    initrd /boot/$(basename "$(ls /target/boot/initrd.img-* | sort -V | tail -n1)")
+}
+GRUBCFG
 
 # Fresh machine-id (was copied from the live image, must be unique per host)
 rm -f /target/etc/machine-id
