@@ -25,7 +25,7 @@ apt-get install -y \
   mtools golang-go git
 
 echo "====== [2/6] Compiling BizBox application ======"
-( cd "$SCRIPT_DIR/bizbox-mvp" && go build -buildvcs=false -o bizbox-mvp . )
+( cd "$SCRIPT_DIR/bizbox-mvp" && go mod tidy && go build -buildvcs=false -o bizbox-mvp . )
 echo "BizBox binary: OK"
 ls -lh "$SCRIPT_DIR/bizbox-mvp/bizbox-mvp"
 
