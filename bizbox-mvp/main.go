@@ -265,6 +265,7 @@ type VMStatus struct {
 	CPULimit  string `json:"cpu_limit"`
 	RAMLimit  string `json:"ram_limit"`
 	IPAddress string `json:"ip_address"`
+	Network   string `json:"network"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -310,6 +311,28 @@ func GetVMStatus(name string) (VMStatus, error) {
 		ramLimit = "Sınırsız (default)"
 	}
 	status.RAMLimit = ramLimit
+
+	if eth0, ok := inst.ExpandedDevices["eth0"]; ok {
+		parent := eth0["parent"]
+		vlanStr := eth0["vlan"]
+		vlanID := 0
+		if vlanStr != "" {
+			fmt.Sscanf(vlanStr, "%d", &vlanID)
+		}
+		
+		var segmentName string
+		err := db.QueryRow("SELECT name FROM network_segments WHERE vswitch = ? AND vlan_id = ?", parent, vlanID).Scan(&segmentName)
+		if err == nil && segmentName != "" {
+			status.Network = segmentName
+		} else {
+			status.Network = parent
+			if vlanID > 0 {
+				status.Network += fmt.Sprintf(" (VLAN %d)", vlanID)
+			}
+		}
+	} else {
+		status.Network = "Yok"
+	}
 
 	// Fetch dynamic instance state for status and IP Address
 	state, _, err := c.GetInstanceState(name)
@@ -491,6 +514,10 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 		var dashboardInstances []DashboardInstance
 
 		for _, inst := range instances {
+			if inst.Config["user.template"] == "true" || inst.ExpandedConfig["user.template"] == "true" {
+				continue
+			}
+
 			statusStr := strings.ToLower(inst.Status)
 
 			cpuLimit := inst.Config["limits.cpu"]
@@ -544,20 +571,17 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var result []InstanceInfo
+	var jsonInstances []VMStatus
 	for _, inst := range instances {
-		result = append(result, InstanceInfo{
-			Name:   inst.Name,
-			Status: inst.Status,
-			Type:   inst.Type,
-		})
-	}
-	if result == nil {
-		result = []InstanceInfo{}
+		if inst.Config["user.template"] == "true" || inst.ExpandedConfig["user.template"] == "true" {
+			continue
+		}
+		status, _ := GetVMStatus(inst.Name)
+		jsonInstances = append(jsonInstances, status)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(jsonInstances)
 }
 
 func handleGetVMDetail(w http.ResponseWriter, r *http.Request) {
@@ -1173,6 +1197,11 @@ func main() {
 		mux.HandleFunc("POST /api/snapshots/destroy", handleDestroySnapshotAPI)
 		mux.HandleFunc("GET /api/vms/{name}/detail", handleGetVMDetailHTML)
 
+		// Templates
+		mux.HandleFunc("GET /api/templates/page", handleGetTemplatesPage)
+		mux.HandleFunc("POST /api/templates/{name}/mark", handleMarkAsTemplate)
+		mux.HandleFunc("POST /api/templates/{name}/clone", handleCloneTemplate)
+
 		// OVS Network Segmentation endpoints
 		mux.HandleFunc("GET /api/network/segments", handleGetSegments)
 		mux.HandleFunc("GET /api/network/portgroups", handleGetPortgroups)
@@ -1441,11 +1470,36 @@ func handleUpdateVMHardware(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	networkStr := r.FormValue("network")
+	
 	if inst.Config == nil {
 		inst.Config = make(map[string]string)
 	}
 	inst.Config["limits.cpu"] = strconv.Itoa(cpu)
 	inst.Config["limits.memory"] = fmt.Sprintf("%dGiB", ram)
+
+	if networkStr != "" {
+		seg, err := GetNetworkSegment(networkStr)
+		if err == nil {
+			if inst.Devices == nil {
+				inst.Devices = make(map[string]map[string]string)
+			}
+			eth0 := inst.Devices["eth0"]
+			if eth0 == nil {
+				eth0 = make(map[string]string)
+				eth0["name"] = "eth0"
+				eth0["type"] = "nic"
+			}
+			eth0["nictype"] = "bridged"
+			eth0["parent"] = seg.VSwitch
+			if seg.VlanID != 0 {
+				eth0["vlan"] = fmt.Sprintf("%d", seg.VlanID)
+			} else {
+				delete(eth0, "vlan")
+			}
+			inst.Devices["eth0"] = eth0
+		}
+	}
 
 	op, err := c.UpdateInstance(name, inst.Writable(), Etag)
 	if err != nil {

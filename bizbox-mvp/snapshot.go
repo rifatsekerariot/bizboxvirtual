@@ -449,9 +449,11 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 		CPUVal    int
 		RAMVal    int
 		IPAddress string
+		Network   string
 		CreatedAt string
 		Snapshots []SnapshotViewItem
 		Logs      []VMLog
+		Segments  []Segment
 	}{
 		Name:      status.Name,
 		Status:    status.Status,
@@ -460,9 +462,11 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 		CPUVal:    cpuVal,
 		RAMVal:    ramVal,
 		IPAddress: status.IPAddress,
+		Network:   status.Network,
 		CreatedAt: status.CreatedAt,
 		Snapshots: snapItems,
 		Logs:      vmLogs,
+		Segments:  ListNetworkSegments(),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
