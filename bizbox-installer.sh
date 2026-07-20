@@ -83,7 +83,20 @@ fi
 
 echo -e "\t    Hedef disk: /dev/$TARGET_DISK"
 
+# Secondary disk: ZFS icin (OS diski disindaki en buyuk disk)
+SECONDARY_DISK=""
+BEST_SIZE=0
+for name in "${CANDIDATE_DISKS[@]}"; do
+  [ "$name" = "$LIVE_SRC_DISK" ] && continue
+  [ "$name" = "$TARGET_DISK" ] && continue
+  size_bytes=$(blockdev --getsize64 "/dev/$name" 2>/dev/null || echo 0)
+  if [ "$size_bytes" -gt "$BEST_SIZE" ]; then
+    BEST_SIZE=$size_bytes
+    SECONDARY_DISK="$name"
+  fi
+done
 
+[ -n "$SECONDARY_DISK" ] && echo -e "\t    ZFS disk: /dev/$SECONDARY_DISK" || echo -e "\t    ZFS: dosya tabanli (loopback)"
 
 # ---------------------------------------------------------------------------
 # Disk silme fonksiyonu: GPT basligi + imzalar + MBR temizlenir
@@ -298,7 +311,42 @@ chroot /target systemd-machine-id-setup
 chroot /target systemctl disable bizbox-installer.service 2>/dev/null || true
 rm -f /target/usr/local/sbin/bizbox-installer.sh
 
+# ---------------------------------------------------------------------------
+# 5. ZFS depolama alani
+# ---------------------------------------------------------------------------
+echo -e "\t    Kurulum durumu: ZFS DEPOLAMA ALANI YAPILANDIRILIYOR..."
 
+chroot /target zpool destroy -f rft 2>/dev/null || true
+
+if [ -n "$SECONDARY_DISK" ]; then
+  wipe_disk "$SECONDARY_DISK"
+  parted -s "/dev/$SECONDARY_DISK" mklabel gpt mkpart primary 0% 100%
+  partprobe "/dev/$SECONDARY_DISK" 2>/dev/null || true
+  udevadm settle --timeout=10 || true
+  sleep 3
+
+  SECONDARY_PART="/dev/$(part_name "$SECONDARY_DISK" 1)"
+  # Partition node olusana kadar bekle
+  for i in $(seq 1 20); do
+    [ -b "$SECONDARY_PART" ] && break
+    sleep 1
+  done
+
+  if [ -b "$SECONDARY_PART" ]; then
+    chroot /target zpool create -f rft "$SECONDARY_PART"
+  else
+    echo -e "\t    UYARI: Secondary disk partition bulunamadi, loopback'e geciyor..."
+    chroot /target truncate -s 20G /var/lib/bizbox_zfs.img
+    chroot /target zpool create -f rft /var/lib/bizbox_zfs.img
+  fi
+else
+  rm -f /target/var/lib/bizbox_zfs.img
+  chroot /target truncate -s 20G /var/lib/bizbox_zfs.img
+  chroot /target zpool create -f rft /var/lib/bizbox_zfs.img
+fi
+
+chroot /target zfs create -p rft/virtual-machines 2>/dev/null || true
+chroot /target zfs create -p rft/containers       2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # 6. Open vSwitch
