@@ -2,82 +2,13 @@
   
   <!-- Tab Headers -->
   <div class="tabs-header" style="display: flex; gap: 16px; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; padding-bottom: 0;">
-    <button class="tab-link active" onclick="switchNetworkTab(event, 'tab-segments')">
-      Ağ Segmentasyonu
+    <button class="tab-link active" onclick="switchNetworkTab(event, 'tab-uplinks')">
+      Sanal Anahtarlar (vSwitches / Uplinks)
     </button>
     <button class="tab-link" onclick="switchNetworkTab(event, 'tab-qos')">
       Trafik Önceliği (QoS)
     </button>
-    <button class="tab-link" onclick="switchNetworkTab(event, 'tab-uplinks')">
-      Dış Bağlantılar (Uplinks)
-    </button>
-  </div>
 
-  <!-- Tab Content: Segments -->
-  <div id="tab-segments" class="tab-panel">
-    <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-      <div>
-        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Ağ Segmentasyonu Yönetimi</h2>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Open vSwitch (OVS) entegrasyonu ile VLAN tabanlı ağ segmentleri</p>
-      </div>
-      <button class="btn btn-primary" onclick="openSegmentModal()">Yeni Segment</button>
-    </div>
-
-    {{if .Segments}}
-    <div class="status-grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
-      {{range .Segments}}
-      <div class="status-card" style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px;">
-        <div>
-          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
-            <span style="font-weight: 600; font-size: 15px; color: var(--text-primary);">{{.Name}}</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600;">VLAN {{.VlanID}}</span>
-              <button type="button" style="background: transparent; border: 1px solid var(--danger-color); color: var(--danger-color); border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Segmenti Sil" hx-delete="/api/network/segments/{{.Name}}" hx-confirm="'{{.Name}}' ağ segmentini silmek istediğinize emin misiniz? Atanmış makinelerin ağ bağlantısı kopabilir!">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-              </button>
-            </div>
-          </div>
-          
-          <div style="margin-top: 10px;">
-            <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.5px; display: block; margin-bottom: 8px; text-transform: uppercase;">Atanmış Sistemler</span>
-            {{if .VMs}}
-            <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px;">
-              {{range .VMs}}
-              <li style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-primary); background-color: var(--bg-color); padding: 6px 10px; border-radius: var(--radius-btn); border: 1px solid var(--border-color);">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="width: 8px; height: 8px; background-color: var(--success-color); border-radius: 50%; display: inline-block;"></span>
-                  <span style="font-weight: 500; font-family: var(--font-mono);">{{.}}</span>
-                </div>
-              </li>
-              {{end}}
-            </ul>
-            {{else}}
-            <div style="font-size: 12px; color: var(--text-secondary); font-style: italic; padding: 12px 0; text-align: center; border: 1px dashed var(--border-color); border-radius: var(--radius-btn);">
-              Atanmış sistem yok
-            </div>
-            {{end}}
-          </div>
-        </div>
-        
-        <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-          <span class="badge" style="display: inline-flex; align-items: center; gap: 6px; background-color: rgba(22, 163, 74, 0.1); color: var(--success-color); font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px;">
-            🔒 İzole
-          </span>
-          <span style="font-size: 11px; color: var(--text-secondary);">Varsayılan Engel</span>
-        </div>
-      </div>
-      {{end}}
-    </div>
-    {{else}}
-    <!-- Empty State for Segments -->
-    <div class="empty-state" style="padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: var(--radius-card);">
-      <div style="font-size: 40px; margin-bottom: 12px;">🌐</div>
-      <h3 style="font-family: var(--font-ui); font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Henüz Ağ Segmenti Yok</h3>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Sanal makinelerinizi izole gruplara ayırmak için ilk ağ segmentinizi oluşturun.</p>
-      <button class="btn btn-primary" onclick="openSegmentModal()">Ağ Segmenti Oluştur</button>
-    </div>
-    {{end}}
-  </div>
 
   <!-- Tab Content: QoS -->
   <div id="tab-qos" class="tab-panel" style="display: none;">
@@ -258,18 +189,8 @@
   </div>
 
   <!-- Tab Content: Uplinks -->
-  <div id="tab-uplinks" class="tab-panel" style="display: none;">
-    <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-      <div>
-        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Dış Bağlantı ve Sanal Anahtar Yönetimi (Uplinks)</h2>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Fiziksel ağ arayüzlerini ve ESXi mantığındaki sanal anahtarları (vSwitch) yönetin</p>
-      </div>
-      <button class="btn btn-primary" onclick="createVSwitch()">Yeni vSwitch Oluştur</button>
-    </div>
-    
-    <div id="uplinks-content-area">
-      <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</div>
-    </div>
+  <div id="tab-uplinks" class="tab-panel" hx-get="/api/network/uplinks" hx-trigger="load, uplinks-updated from:body" hx-swap="innerHTML">
+    <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</div>
   </div>
 
   <script>
@@ -291,11 +212,6 @@
       }
       
       localStorage.setItem('activeNetworkTab', tabId);
-
-      // Load uplinks dynamically if needed
-      if (tabId === 'tab-uplinks' && typeof window.loadUplinks === 'function') {
-        window.loadUplinks();
-      }
     }
 
     // Restore active tab after HTMX swap
@@ -303,174 +219,5 @@
       const activeTab = localStorage.getItem('activeNetworkTab') || 'tab-segments';
       switchNetworkTab(null, activeTab);
     })();
-
-    window.loadUplinks = function() {
-      const container = document.getElementById('uplinks-content-area');
-      if (!container) return;
-      
-      container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</div>';
-      
-      fetch('/api/network/uplinks')
-        .then(res => res.json())
-        .then(data => {
-          let html = `
-            <div style="margin-bottom: 32px;">
-              <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Sanal Anahtarlar (vSwitches)</h3>
-              <div class="table-responsive">
-                <table class="vm-table">
-                  <thead>
-                    <tr>
-                      <th>vSwitch Adı</th>
-                      <th>Bağlı Fiziksel Portlar (Uplinks)</th>
-                      <th>İşlemler</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-          `;
-          
-          if (data.vswitches && data.vswitches.length > 0) {
-            data.vswitches.forEach(vsw => {
-              let ports = vsw.interfaces && vsw.interfaces.length > 0 ? vsw.interfaces.join(', ') : '<span style="color:var(--text-secondary); font-style:italic;">Port yok</span>';
-              let badge = vsw.is_default ? '<span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); font-size: 10px; margin-left: 8px;">Varsayılan (İç Ağ)</span>' : '';
-              let delBtn = vsw.is_default ? '<button class="btn btn-secondary btn-sm" disabled>Silinemez</button>' : `<button class="btn btn-danger btn-sm" onclick="deleteVSwitch('${vsw.name}')">Sil</button>`;
-              
-              html += `
-                <tr>
-                  <td class="font-bold font-mono">${vsw.name} ${badge}</td>
-                  <td class="font-mono">${ports}</td>
-                  <td>${delBtn}</td>
-                </tr>
-              `;
-            });
-          } else {
-            html += '<tr><td colspan="3" style="text-align: center; color: var(--text-secondary); font-style: italic;">vSwitch bulunamadı.</td></tr>';
-          }
-          
-          html += `
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            
-            <div>
-              <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Fiziksel Arayüzler (Fiziksel Portlar)</h3>
-              <div class="table-responsive">
-                <table class="vm-table">
-                  <thead>
-                    <tr>
-                      <th>Arayüz Adı</th>
-                      <th>Durum</th>
-                      <th>MAC Adresi</th>
-                      <th>Bağlı Olduğu vSwitch</th>
-                      <th style="width: 250px;">İşlemler</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-          `;
-          
-          if (data.uplinks && data.uplinks.length > 0) {
-            data.uplinks.forEach(up => {
-              let statusBadge = up.is_up 
-                ? '<span class="badge" style="background-color: rgba(22, 163, 74, 0.1); color: var(--success-color);">Aktif</span>'
-                : '<span class="badge" style="background-color: rgba(220, 38, 38, 0.1); color: var(--danger-color);">Pasif</span>';
-                
-              let vswSelectOptions = '<option value="">-- Boşta Bırak --</option>';
-              data.vswitches.forEach(vsw => {
-                let selected = (up.vswitch === vsw.name) ? 'selected' : '';
-                vswSelectOptions += `<option value="${vsw.name}" ${selected}>${vsw.name}</option>`;
-              });
-              
-              let attachHtml = `
-                <div style="display: flex; gap: 8px;">
-                  <select id="vsw-select-${up.name}" class="form-control" style="padding: 4px 8px; border-radius: 4px;">
-                    ${vswSelectOptions}
-                  </select>
-                  <button class="btn btn-primary btn-sm" onclick="applyUplink('${up.name}', '${up.vswitch}')">Uygula</button>
-                </div>
-              `;
-              
-              html += `
-                <tr>
-                  <td class="font-bold font-mono">${up.name}</td>
-                  <td>${statusBadge}</td>
-                  <td class="font-mono">${up.mac_address}</td>
-                  <td class="font-mono">${up.vswitch || '<span style="color:var(--text-secondary); font-style:italic;">Boşta</span>'}</td>
-                  <td>${attachHtml}</td>
-                </tr>
-              `;
-            });
-          } else {
-            html += '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary); font-style: italic;">Fiziksel bağlantı bulunamadı.</td></tr>';
-          }
-          
-          html += `
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          `;
-          
-          container.innerHTML = html;
-        })
-        .catch(err => {
-          container.innerHTML = `<div style="text-align: center; color: var(--danger-color); padding: 20px;">Hata: ${err.message}</div>`;
-        });
-    };
-
-    window.createVSwitch = function() {
-      const name = prompt("Yeni vSwitch adını girin (Örn: vSwitch1, br-ext):");
-      if (!name) return;
-      
-      fetch('/api/network/vswitches', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ name: name })
-      })
-      .then(res => {
-        if (!res.ok) throw new Error("Oluşturulamadı");
-        window.loadUplinks();
-      })
-      .catch(err => alert("Hata: " + err.message));
-    };
-
-    window.deleteVSwitch = function(name) {
-      if (!confirm(`'${name}' sanal anahtarını silmek istediğinize emin misiniz?`)) return;
-      fetch(`/api/network/vswitches/${name}`, { method: 'DELETE' })
-        .then(res => {
-          if (!res.ok) throw new Error("Silinemedi");
-          window.loadUplinks();
-        })
-        .catch(err => alert("Hata: " + err.message));
-    };
-
-    window.applyUplink = function(iface, currentVsw) {
-      const select = document.getElementById(`vsw-select-${iface}`);
-      const targetVsw = select.value;
-      
-      if (targetVsw === currentVsw) {
-         return; // No change
-      }
-      
-      let p;
-      if (targetVsw === "") {
-        // Detach
-        if (!confirm(`'${iface}' arayüzünü ${currentVsw} köprüsünden çıkarmak istediğinize emin misiniz? (ÖNEMLİ: Yönetim portunuzu keserseniz erişiminiz kopar!)`)) return;
-        p = fetch(`/api/network/uplinks/${iface}/detach`, { method: 'POST' });
-      } else {
-        // Attach
-        if (!confirm(`'${iface}' arayüzünü '${targetVsw}' köprüsüne eklemek istediğinize emin misiniz? (ÖNEMLİ: Eğer bu port sunucunun tek yönetim adresi ise IP'si gidebilir!)`)) return;
-        p = fetch(`/api/network/uplinks/${iface}/attach`, { 
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ vswitch: targetVsw })
-        });
-      }
-      
-      p.then(res => {
-        if (!res.ok) return res.text().then(t => { throw new Error(t); });
-        window.loadUplinks();
-      })
-      .catch(err => alert("Hata: " + err.message));
-    };
   </script>
 </div>

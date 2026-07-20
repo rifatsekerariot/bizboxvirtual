@@ -12,11 +12,12 @@ import (
 	"github.com/lxc/incus/shared/api"
 )
 
-// Segment represents a network segment metadata and its assigned VMs
+// Segment represents a network segment metadata (Portgroup) and its assigned VMs
 type Segment struct {
-	Name   string   `json:"name"`
-	VlanID int      `json:"vlan_id"`
-	VMs    []string `json:"vms"`
+	Name    string   `json:"name"`
+	VlanID  int      `json:"vlan_id"`
+	VSwitch string   `json:"vswitch_name"`
+	VMs     []string `json:"vms"`
 }
 
 // InitNetworkDB initializes the SQLite tables required for network segmentation and seeds default values.
@@ -26,6 +27,7 @@ func InitNetworkDB() {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT UNIQUE,
 		vlan_id INTEGER UNIQUE,
+		vswitch_name TEXT DEFAULT 'br-int',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	_, err := db.Exec(querySegments)
@@ -87,7 +89,7 @@ func syncNetworkDB() {
 func ListNetworkSegments() []Segment {
 	syncNetworkDB()
 
-	rows, err := db.Query("SELECT name, vlan_id FROM network_segments ORDER BY vlan_id ASC")
+	rows, err := db.Query("SELECT name, vlan_id, vswitch_name FROM network_segments ORDER BY vlan_id ASC")
 	if err != nil {
 		log.Printf("Segmentler listelenirken hata: %v", err)
 		return []Segment{}
@@ -97,7 +99,7 @@ func ListNetworkSegments() []Segment {
 	var segments []Segment
 	for rows.Next() {
 		var seg Segment
-		if err := rows.Scan(&seg.Name, &seg.VlanID); err != nil {
+		if err := rows.Scan(&seg.Name, &seg.VlanID, &seg.VSwitch); err != nil {
 			continue
 		}
 		seg.VMs = []string{}
@@ -122,14 +124,39 @@ func ListNetworkSegments() []Segment {
 	return segments
 }
 
-// CreateSegment registers a new segment and runs OVS wrapper setup commands
-func CreateSegment(name string, vlanID int) error {
-	_, err := db.Exec("INSERT INTO network_segments (name, vlan_id) VALUES (?, ?)", name, vlanID)
+func GetNetworkSegment(name string) (*Segment, error) {
+	rows, err := db.Query("SELECT name, vlan_id, vswitch_name FROM network_segments WHERE name = ?", name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var seg Segment
+		var vswitch sql.NullString
+		err = rows.Scan(&seg.Name, &seg.VlanID, &vswitch)
+		if err == nil {
+			if vswitch.Valid && vswitch.String != "" {
+				seg.VSwitch = vswitch.String
+			} else {
+				seg.VSwitch = "br-int"
+			}
+			return &seg, nil
+		}
+	}
+	return nil, fmt.Errorf("Segment bulunamadı")
+}
+
+// CreateSegment adds a new network segment and runs OVS wrapper setup commands
+func CreateSegment(name string, vlanID int, vswitchName string) error {
+	if vswitchName == "" {
+		vswitchName = "br-int"
+	}
+	_, err := db.Exec("INSERT INTO network_segments (name, vlan_id, vswitch_name) VALUES (?, ?, ?)", name, vlanID, vswitchName)
 	if err != nil {
 		return fmt.Errorf("veritabanına segment eklenirken hata: %w", err)
 	}
 
-	return createOVSSegment(name, vlanID)
+	return createOVSSegment(name, vlanID) // Might need to update createOVSSegment if vswitch logic is needed there
 }
 
 // AssignVMToSegment links a VM to a segment in the database and applies VLAN tagging on the OVS port
@@ -167,7 +194,8 @@ func DeleteSegment(name string) error {
 	syncNetworkDB()
 
 	var vlanID int
-	err := db.QueryRow("SELECT vlan_id FROM network_segments WHERE name = ?", name).Scan(&vlanID)
+	var vswitchName string
+	err := db.QueryRow("SELECT vlan_id, vswitch_name FROM network_segments WHERE name = ?", name).Scan(&vlanID, &vswitchName)
 	if err != nil {
 		return fmt.Errorf("segment bulunamadı: %w", err)
 	}
@@ -186,7 +214,7 @@ func DeleteSegment(name string) error {
 	}
 
 	// Remove OVS flow rules
-	_ = exec.Command("ovs-ofctl", "del-flows", "br-int", fmt.Sprintf("dl_vlan=%d", vlanID)).Run()
+	_ = exec.Command("ovs-ofctl", "del-flows", vswitchName, fmt.Sprintf("dl_vlan=%d", vlanID)).Run()
 
 	// Also remove QoS rule if any
 	_, _ = db.Exec("DELETE FROM qos_rules WHERE target = ?", name)
@@ -195,36 +223,36 @@ func DeleteSegment(name string) error {
 }
 
 // createOVSSegment wraps OVS command line actions and applies default security flow rules
-func createOVSSegment(name string, vlanID int) error {
-	log.Printf("[OVS] Segment oluşturuluyor: %s (VLAN ID: %d)", name, vlanID)
+func createOVSSegment(name string, vlanID int, vswitchName string) error {
+	log.Printf("[OVS] Segment oluşturuluyor: %s (VLAN ID: %d) on %s", name, vlanID, vswitchName)
 
-	// 1. Ensure Integration Bridge (br-int) exists
-	cmdBridge := exec.Command("ovs-vsctl", "add-br", "br-int")
+	// 1. Ensure VSwitch exists
+	cmdBridge := exec.Command("ovs-vsctl", "add-br", vswitchName)
 	if out, err := cmdBridge.CombinedOutput(); err != nil {
 		// If bridge already exists, that's not a fatal error
 		if !strings.Contains(string(out), "already exists") {
-			return fmt.Errorf("br-int köprüsü oluşturulamadı: %w. Detay: %s", err, string(out))
+			return fmt.Errorf("%s köprüsü oluşturulamadı: %w. Detay: %s", vswitchName, err, string(out))
 		}
 	} else {
-		log.Printf("[OVS] br-int köprüsü oluşturuldu/doğrulandı.")
+		log.Printf("[OVS] %s köprüsü oluşturuldu/doğrulandı.", vswitchName)
 	}
 
 	// 2. Apply Security Flow Rules (Default Deny between VLANs)
 	
 	// VLAN yönlendirme kuralı
-	cmdFlow := exec.Command("ovs-ofctl", "add-flow", "br-int", fmt.Sprintf("priority=1000,dl_vlan=%d,actions=resubmit(,1)", vlanID))
+	cmdFlow := exec.Command("ovs-ofctl", "add-flow", vswitchName, fmt.Sprintf("priority=1000,dl_vlan=%d,actions=resubmit(,1)", vlanID))
 	if out, err := cmdFlow.CombinedOutput(); err != nil {
 		return fmt.Errorf("ovs-ofctl add-flow resubmit başarısız: %w. Detay: %s", err, string(out))
 	}
 
 	// İzolasyon tablosu varsayılan DROP kuralı
-	cmdDropFlow := exec.Command("ovs-ofctl", "add-flow", "br-int", "table=1,priority=1,actions=drop")
+	cmdDropFlow := exec.Command("ovs-ofctl", "add-flow", vswitchName, "table=1,priority=1,actions=drop")
 	if out, err := cmdDropFlow.CombinedOutput(); err != nil {
 		return fmt.Errorf("ovs-ofctl add-flow table=1 drop başarısız: %w. Detay: %s", err, string(out))
 	}
 
 	// Aynı VLAN içi haberleşme kuralı
-	cmdAllowFlow := exec.Command("ovs-ofctl", "add-flow", "br-int", fmt.Sprintf("table=1,priority=100,dl_vlan=%d,actions=normal", vlanID))
+	cmdAllowFlow := exec.Command("ovs-ofctl", "add-flow", vswitchName, fmt.Sprintf("table=1,priority=100,dl_vlan=%d,actions=normal", vlanID))
 	if out, err := cmdAllowFlow.CombinedOutput(); err != nil {
 		return fmt.Errorf("ovs-ofctl add-flow normal başarısız: %w. Detay: %s", err, string(out))
 	}
@@ -250,7 +278,7 @@ func getAllVMNames() ([]string, error) {
 	return names, nil
 }
 
-// GET /api/network/segments
+// GET /api/network/segments (For backward compatibility and network.html)
 func handleGetSegments(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("HX-Request") == "true" {
 		segments := ListNetworkSegments()
@@ -285,6 +313,52 @@ func handleGetSegments(w http.ResponseWriter, r *http.Request) {
 		err = templates.ExecuteTemplate(w, "network.html", data)
 		if err != nil {
 			log.Printf("[Network] network.html render hatası: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// JSON response
+	segments := ListNetworkSegments()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(segments)
+}
+
+// GET /api/network/portgroups
+func handleGetPortgroups(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("HX-Request") == "true" {
+		segments := ListNetworkSegments()
+		allVMs, err := getAllVMNames()
+		if err != nil {
+			log.Printf("[Network] Incus VM listesi alınamadı: %v", err)
+			allVMs = []string{}
+		}
+
+		qosRules := GetQoSRulesMap()
+		vmToSegment := make(map[string]string)
+		for _, seg := range segments {
+			for _, vm := range seg.VMs {
+				vmToSegment[vm] = seg.Name
+			}
+		}
+
+		data := struct {
+			Segments    []Segment
+			AllVMs      []string
+			QosRules    map[string]string
+			VmToSegment map[string]string
+		}{
+			Segments:    segments,
+			AllVMs:      allVMs,
+			QosRules:    qosRules,
+			VmToSegment: vmToSegment,
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		err = templates.ExecuteTemplate(w, "portgroups.html", data)
+		if err != nil {
+			log.Printf("[Network] portgroups.html render hatası: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -369,8 +443,18 @@ func handleCreateSegmentAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var vswitchName string
+	if r.Header.Get("HX-Request") == "true" || strings.Contains(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		vswitchName = r.FormValue("vswitch_name")
+	} else {
+		// Not currently handling JSON properly since we mostly use HTMX forms
+	}
+	vswitchName = strings.TrimSpace(vswitchName)
+	if vswitchName == "" {
+		vswitchName = "br-int"
+	}
 
-	err := CreateSegment(name, vlanID)
+	err := CreateSegment(name, vlanID, vswitchName)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Segment oluşturulamadı: %v", err), http.StatusInternalServerError)
 		return

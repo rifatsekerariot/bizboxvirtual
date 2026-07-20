@@ -590,6 +590,7 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		ramStr := r.FormValue("ram")
 
 		networkType := r.FormValue("network_type")
+		portgroupName := r.FormValue("portgroup")
 		networkBridge := r.FormValue("network_bridge")
 		vlanID := r.FormValue("vlan_id")
 		staticIP := r.FormValue("static_ip")
@@ -613,7 +614,23 @@ func handleCreateVM(w http.ResponseWriter, r *http.Request) {
 			"type": "nic",
 		}
 
-		if networkType == "bridged" {
+		if networkType == "portgroup" && portgroupName != "" {
+			seg, err := GetNetworkSegment(portgroupName)
+			if err == nil {
+				eth0["nictype"] = "bridged"
+				eth0["parent"] = seg.VSwitch
+				if seg.VlanID != 0 {
+					eth0["vlan"] = fmt.Sprintf("%d", seg.VlanID)
+				}
+				if staticIP != "" {
+					eth0["ipv4.address"] = staticIP
+				}
+			} else {
+				// Fallback
+				eth0["nictype"] = "bridged"
+				eth0["parent"] = "br-int"
+			}
+		} else if networkType == "bridged" {
 			eth0["nictype"] = "bridged"
 			if networkBridge != "" {
 				eth0["parent"] = networkBridge
@@ -855,6 +872,9 @@ func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
 		bridges = []string{"br-int"}
 	}
 
+	// Fetch segments (Portgroups)
+	segments := ListNetworkSegments()
+
 	data := struct {
 		Name         string
 		Image        string
@@ -862,6 +882,7 @@ func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
 		CPU          string
 		RAM          string
 		VSwitches    []string
+		Segments     []Segment
 	}{
 		Name:         r.FormValue("name"),
 		Image:        r.FormValue("image"),
@@ -869,6 +890,7 @@ func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
 		CPU:          r.FormValue("cpu"),
 		RAM:          r.FormValue("ram"),
 		VSwitches:    bridges,
+		Segments:     segments,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1153,6 +1175,7 @@ func main() {
 
 		// OVS Network Segmentation endpoints
 		mux.HandleFunc("GET /api/network/segments", handleGetSegments)
+		mux.HandleFunc("GET /api/network/portgroups", handleGetPortgroups)
 		mux.HandleFunc("POST /api/network/segments", handleCreateSegmentAPI)
 		mux.HandleFunc("POST /api/network/segments/{name}/assign", handleAssignVMAPI)
 		mux.HandleFunc("DELETE /api/network/segments/{name}", handleDeleteSegmentAPI)

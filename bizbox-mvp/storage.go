@@ -65,21 +65,32 @@ func ListRawDisks() ([]RawDisk, error) {
 	return rawDisks, nil
 }
 
-// CreateDatastore formats a disk as a ZFS pool and adds it to Incus
+// CreateDatastore formats a disk as a ZFS pool and adds it to Incus via API
 func CreateDatastore(poolName, diskName string) error {
-	diskPath := fmt.Sprintf("/dev/%s", diskName)
-
-	// 1. Mevcut dosya sistemlerini silmek için disk temizliği (wipefs) ve ZFS havuzu oluştur (-f ile zorla)
-	exec.Command("wipefs", "-a", diskPath).Run() // Önce temizlemeyi deneriz
-	zpoolCmd := exec.Command("zpool", "create", "-f", poolName, diskPath)
-	if out, err := zpoolCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ZFS havuzu oluşturulamadı: %w. Detay: %s", err, string(out))
+	c := GetIncusClient()
+	if c == nil {
+		return fmt.Errorf("Incus client error")
 	}
 
-	// 2. Incus'a ZFS havuzunu bağla
-	incusCmd := exec.Command("incus", "storage", "create", poolName, "zfs", fmt.Sprintf("source=%s", poolName))
-	if out, err := incusCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("Incus storage eklenemedi: %w. Detay: %s", err, string(out))
+	diskPath := fmt.Sprintf("/dev/%s", diskName)
+
+	// Wipe the disk to ensure Incus doesn't fail due to existing signatures
+	exec.Command("wipefs", "-a", diskPath).Run()
+
+	req := api.StoragePoolsPost{
+		StoragePoolPut: api.StoragePoolPut{
+			Config: map[string]string{
+				"source": diskPath,
+			},
+			Description: "ESXi Datastore",
+		},
+		Driver: "zfs",
+		Name:   poolName,
+	}
+
+	err := c.CreateStoragePool(req)
+	if err != nil {
+		return fmt.Errorf("Incus storage pool oluşturulamadı: %w", err)
 	}
 
 	return nil
@@ -104,7 +115,7 @@ func handleGetStoragePage(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Disks []RawDisk
-		Pools []IncusStoragePool
+		Pools []api.StoragePool
 	}{
 		Disks: disks,
 		Pools: pools,
@@ -129,7 +140,7 @@ func handleCreateDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := CreateDatastore(poolName, diskName); err != nil {
-		LogSystemEvent(getUsername(r), "Datastore Oluşturma", poolName, "Başarısız")
+		LogSystemEvent(getUsername(r), "Datastore Oluşturma", poolName, "Başarısız: "+err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -143,50 +154,63 @@ func handleCreateDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type IncusStoragePool struct {
-	Name        string   `json:"name"`
-	Driver      string   `json:"driver"`
-	Description string   `json:"description"`
-	Status      string   `json:"status"`
-	UsedBy      []string `json:"used_by"`
-}
+// ListDatastores returns all storage pools from Incus, filtering out system default pool
+func ListDatastores() ([]api.StoragePool, error) {
+	c := GetIncusClient()
+	if c == nil {
+		return nil, fmt.Errorf("Incus client connection failed")
+	}
 
-// ListDatastores returns all storage pools from Incus
-func ListDatastores() ([]IncusStoragePool, error) {
-	cmd := exec.Command("incus", "storage", "list", "--format", "json")
-	out, err := cmd.Output()
+	allPools, err := c.GetStoragePools()
 	if err != nil {
 		return nil, fmt.Errorf("Incus storage list başarısız: %w", err)
 	}
 
-	var pools []IncusStoragePool
-	if err := json.Unmarshal(out, &pools); err != nil {
-		return nil, err
+	var datastores []api.StoragePool
+	for _, p := range allPools {
+		// Hide system or default disk. Usually named "default" or "local" in setups.
+		if p.Name == "default" || p.Name == "local" || p.Description == "System Disk" {
+			continue
+		}
+		datastores = append(datastores, p)
 	}
-	return pools, nil
+
+	return datastores, nil
 }
 
 // handleDeleteDatastoreAPI removes a datastore
 func handleDeleteDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 	poolName := r.PathValue("pool")
-	if poolName == "" || poolName == "default" {
+	if poolName == "" || poolName == "default" || poolName == "local" {
 		http.Error(w, "Geçersiz veya silinemez havuz adı", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Delete from Incus
-	incusCmd := exec.Command("incus", "storage", "delete", poolName)
-	if out, err := incusCmd.CombinedOutput(); err != nil {
-		LogSystemEvent(getUsername(r), "Datastore Silme", poolName, "Başarısız")
-		http.Error(w, fmt.Sprintf("Incus storage silinemedi: %s", string(out)), http.StatusInternalServerError)
+	c := GetIncusClient()
+	if c == nil {
+		http.Error(w, "Incus client error", http.StatusInternalServerError)
 		return
 	}
 
-	// 2. Destroy ZFS pool to free disk
-	zpoolCmd := exec.Command("zpool", "destroy", poolName)
-	if out, err := zpoolCmd.CombinedOutput(); err != nil {
-		fmt.Printf("Zpool destroy uyarı: %v - %s\n", err, string(out))
-		// ZFS silinirken hata olsa bile devam edelim, diskin elle temizlenmesi gerekebilir
+	// 1. Get pool info to find if it was ZFS to optionally destroy zpool
+	pool, _, err := c.GetStoragePool(poolName)
+	if err != nil {
+		http.Error(w, "Pool bulunamadı", http.StatusNotFound)
+		return
+	}
+
+	// 2. Delete from Incus
+	err = c.DeleteStoragePool(poolName)
+	if err != nil {
+		LogSystemEvent(getUsername(r), "Datastore Silme", poolName, "Başarısız: "+err.Error())
+		http.Error(w, fmt.Sprintf("Incus storage silinemedi: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Destroy ZFS pool to free disk (Incus sometimes leaves the zpool imported if it was custom created, 
+	// but if Incus created it, it might wipe it. We try to destroy it just in case.)
+	if pool.Driver == "zfs" {
+		exec.Command("zpool", "destroy", poolName).Run()
 	}
 
 	LogSystemEvent(getUsername(r), "Datastore Silme", poolName, "Başarılı")

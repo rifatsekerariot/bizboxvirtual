@@ -8,14 +8,29 @@
   <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">Ağ Bağlantısı Tipi</label>
   <div style="display: flex; gap: 15px; margin-bottom: 20px;">
     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
-      <input type="radio" name="network_type" value="bridged" checked onchange="toggleNetworkOptions()"> Köprülü (Bridged / OVS)
+      <input type="radio" name="network_type" value="portgroup" checked onchange="toggleNetworkOptions()"> Portgrup (Önerilen)
+    </label>
+    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
+      <input type="radio" name="network_type" value="bridged" onchange="toggleNetworkOptions()"> Gelişmiş (Köprü/VLAN)
     </label>
     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
       <input type="radio" name="network_type" value="nat" onchange="toggleNetworkOptions()"> NAT (Sadece İnternet)
     </label>
   </div>
 
-  <div id="bridged-options" style="margin-bottom: 20px;">
+  <div id="portgroup-options" style="margin-bottom: 20px;">
+    <div class="form-group">
+      <label for="portgroup">Portgrup (Ağ Profili)</label>
+      <select id="portgroup" name="portgroup" class="form-control" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
+        {{range .Segments}}
+        <option value="{{.Name}}">{{.Name}} ({{.VSwitch}}{{if ne .VlanID 0}} - VLAN {{.VlanID}}{{end}})</option>
+        {{end}}
+      </select>
+      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin bağlanacağı önceden tanımlanmış portgrubu seçin.</small>
+    </div>
+  </div>
+
+  <div id="bridged-options" style="margin-bottom: 20px; display: none;">
     <div class="form-group">
       <label for="network-bridge">Köprü Arabirimi (vSwitch)</label>
       <select id="network-bridge" name="network_bridge" class="form-control" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
@@ -24,13 +39,13 @@
         {{end}}
         <option value="incusbr0">incusbr0 (Varsayılan Incus Köprüsü)</option>
       </select>
-      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin bağlanacağı sanal anahtarı seçin.</small>
+      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin doğrudan bağlanacağı sanal anahtarı seçin.</small>
     </div>
 
     <div class="form-group" style="margin-top: 15px;">
       <label for="vlan-id">VLAN ID (Opsiyonel)</label>
       <input type="number" id="vlan-id" name="vlan_id" min="1" max="4094" placeholder="örn: 10" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
-      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemi belirli bir OVS VLAN ağına dahil etmek istiyorsanız doldurun.</small>
+      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Manuel VLAN yapılandırması.</small>
     </div>
   </div>
 
@@ -48,13 +63,19 @@
 
 <script>
 function toggleNetworkOptions() {
-  const isBridged = document.querySelector('input[name="network_type"]:checked').value === 'bridged';
+  const networkType = document.querySelector('input[name="network_type"]:checked').value;
   const bridgedOptions = document.getElementById('bridged-options');
+  const portgroupOptions = document.getElementById('portgroup-options');
   
-  if (isBridged) {
+  if (networkType === 'bridged') {
     bridgedOptions.style.display = 'block';
+    portgroupOptions.style.display = 'none';
+  } else if (networkType === 'portgroup') {
+    bridgedOptions.style.display = 'none';
+    portgroupOptions.style.display = 'block';
   } else {
     bridgedOptions.style.display = 'none';
+    portgroupOptions.style.display = 'none';
   }
 }
 </script>
