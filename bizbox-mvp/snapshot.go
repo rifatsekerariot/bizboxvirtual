@@ -15,11 +15,11 @@ import (
 	"github.com/lxc/incus/shared/api"
 )
 
-// Snapshot represents ZFS snapshot metadata
+// Snapshot represents an Incus snapshot metadata
 type Snapshot struct {
-	Name        string    `json:"name"`        // e.g. "rft/virtual-machines/vm1@snap1"
-	ShortName   string    `json:"short_name"`  // e.g. "snap1"
-	Dataset     string    `json:"dataset"`     // e.g. "rft/virtual-machines/vm1"
+	Name        string    `json:"name"`
+	ShortName   string    `json:"short_name"`
+	VMName      string    `json:"vm_name"`
 	CreatedAt   time.Time `json:"created_at"`
 	IsAutomatic bool      `json:"is_automatic"`
 }
@@ -29,81 +29,43 @@ var AutoSnapshotInterval = 15 * time.Minute
 
 func init() {
 	if val := os.Getenv("AUTO_SNAPSHOT_INTERVAL_MINUTES"); val != "" {
-		if mins, err := strconv.Atoi(val); err == nil {
+		if mins, err := strconv.Atoi(val); err == nil && mins > 0 {
 			AutoSnapshotInterval = time.Duration(mins) * time.Minute
 		}
 	}
 }
 
-// getDatasetForInstance returns the ZFS dataset name for the instance
-func getDatasetForInstance(name string, instType string) string {
-	if instType == "virtual-machine" {
-		return fmt.Sprintf("rft/virtual-machines/%s", name)
-	}
-	return fmt.Sprintf("rft/containers/%s", name)
-}
-
-// ListSnapshots executes ZFS command to list snapshots of a dataset
-func ListSnapshots(dataset string) []Snapshot {
-	if dataset == "" {
+// ListInstanceSnapshots executes Incus command to list snapshots of an instance
+func ListInstanceSnapshots(vmName string) []Snapshot {
+	if vmName == "" {
 		return []Snapshot{}
 	}
 
-	// -H: no headers, script-friendly
-	// -p: print numbers (like epoch timestamps for creation) exactly
-	// -t snapshot: only show snapshots
-	// -o name,creation: output name and creation epoch
-	// -r: recursive (we can filter for exact match)
-	cmd := exec.Command("zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,creation", "-r", dataset)
+	cmd := exec.Command("incus", "snapshot", "list", vmName, "--format", "json")
 	output, err := cmd.Output()
 	if err != nil {
-		// Log error to stdout and return empty
-		fmt.Printf("[ZFS] list error for %s: %v\n", dataset, err)
+		fmt.Printf("[Incus] list snapshot error for %s: %v\n", vmName, err)
+		return []Snapshot{}
+	}
+
+	var incusSnaps []struct {
+		Name      string    `json:"name"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	if err := json.Unmarshal(output, &incusSnaps); err != nil {
+		fmt.Printf("[Incus] unmarshal snapshot error for %s: %v\n", vmName, err)
 		return []Snapshot{}
 	}
 
 	var snapshots []Snapshot
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 {
-			fields = strings.Fields(line)
-			if len(fields) < 2 {
-				continue
-			}
-		}
-
-		fullName := fields[0]
-		epochStr := fields[1]
-
-		epoch, err := strconv.ParseInt(epochStr, 10, 64)
-		if err != nil {
-			continue
-		}
-
-		parts := strings.SplitN(fullName, "@", 2)
-		if len(parts) < 2 {
-			continue
-		}
-		dsName := parts[0]
-		shortName := parts[1]
-
-		// Ensure we only show snapshots belonging to this exact dataset (not sub-datasets)
-		if dsName != dataset {
-			continue
-		}
-
-		createdAt := time.Unix(epoch, 0)
-		isAutomatic := strings.HasPrefix(shortName, "auto_")
-
+	for _, s := range incusSnaps {
+		isAutomatic := strings.HasPrefix(s.Name, "auto_")
 		snapshots = append(snapshots, Snapshot{
-			Name:        fullName,
-			ShortName:   shortName,
-			Dataset:     dsName,
-			CreatedAt:   createdAt,
+			Name:        fmt.Sprintf("%s@%s", vmName, s.Name),
+			ShortName:   s.Name,
+			VMName:      vmName,
+			CreatedAt:   s.CreatedAt,
 			IsAutomatic: isAutomatic,
 		})
 	}
@@ -111,53 +73,49 @@ func ListSnapshots(dataset string) []Snapshot {
 	return snapshots
 }
 
-// CreateSnapshot creates a manual snapshot on the given dataset
-func CreateSnapshot(dataset string) error {
+// CreateInstanceSnapshot creates a manual snapshot on the given instance
+func CreateInstanceSnapshot(vmName string) error {
 	timestamp := time.Now().Unix()
 	snapName := fmt.Sprintf("manual_%d", timestamp)
-	fullName := fmt.Sprintf("%s@%s", dataset, snapName)
 
-	cmd := exec.Command("zfs", "snapshot", fullName)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ZFS manual snapshot oluşturulamadı: %w", err)
+	cmd := exec.Command("incus", "snapshot", "create", vmName, snapName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("Incus manual snapshot oluşturulamadı: %w. Detay: %s", err, string(out))
 	}
 	return nil
 }
 
-// CreateAutoSnapshot creates an automatic snapshot on the given dataset
-func CreateAutoSnapshot(dataset string) error {
+// CreateAutoInstanceSnapshot creates an automatic snapshot on the given instance
+func CreateAutoInstanceSnapshot(vmName string) error {
 	timestamp := time.Now().Unix()
 	snapName := fmt.Sprintf("auto_%d", timestamp)
-	fullName := fmt.Sprintf("%s@%s", dataset, snapName)
 
-	cmd := exec.Command("zfs", "snapshot", fullName)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ZFS auto snapshot oluşturulamadı: %w", err)
+	cmd := exec.Command("incus", "snapshot", "create", vmName, snapName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("Incus auto snapshot oluşturulamadı: %w. Detay: %s", err, string(out))
 	}
 	return nil
 }
 
-// RollbackSnapshot rolls back a dataset to a specific snapshot
-func RollbackSnapshot(snapshotName string) error {
-
-	// -r destroys any snapshots and bookmarks more recent than the target one
-	cmd := exec.Command("zfs", "rollback", "-r", snapshotName)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ZFS rollback başarısız (%s): %w", snapshotName, err)
+// RollbackInstanceSnapshot rolls back a dataset to a specific snapshot
+func RollbackInstanceSnapshot(vmName string, snapshotName string) error {
+	cmd := exec.Command("incus", "snapshot", "restore", vmName, snapshotName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("Incus rollback başarısız (%s): %w. Detay: %s", snapshotName, err, string(out))
 	}
 	return nil
 }
 
-// DestroySnapshot deletes a ZFS snapshot
-func DestroySnapshot(snapshotName string) error {
-	cmd := exec.Command("zfs", "destroy", snapshotName)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ZFS snapshot silinemedi (%s): %w", snapshotName, err)
+// DestroyInstanceSnapshot deletes a snapshot
+func DestroyInstanceSnapshot(vmName string, snapshotName string) error {
+	cmd := exec.Command("incus", "snapshot", "delete", vmName, snapshotName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("Incus snapshot silinemedi (%s): %w. Detay: %s", snapshotName, err, string(out))
 	}
 	return nil
 }
 
-// StartAutoSnapshotScheduler initializes the background scheduler for snapshots and retention
+// StartAutoSnapshotScheduler initializes the background scheduler for snapshots and retentiontention
 func StartAutoSnapshotScheduler() {
 	fmt.Printf("[AutoSnapshot] Zamanlayıcı başlatıldı. Çalışma aralığı: %v\n", AutoSnapshotInterval)
 	ticker := time.NewTicker(AutoSnapshotInterval)
@@ -185,20 +143,19 @@ func takeAutoSnapshotsAndClean() {
 
 	now := time.Now()
 	for _, inst := range instances {
-		dataset := getDatasetForInstance(inst.Name, inst.Type)
 
 		// 1. Create automatic snapshot
-		if err := CreateAutoSnapshot(dataset); err != nil {
+		if err := CreateAutoInstanceSnapshot(inst.Name); err != nil {
 			fmt.Printf("[AutoSnapshot] Hata - %s için otomatik snapshot alınamadı: %v\n", inst.Name, err)
 		} else {
 			fmt.Printf("[AutoSnapshot] Başarılı - %s için otomatik snapshot alındı\n", inst.Name)
 		}
 
-		// 2. retention: clean up auto snapshots older than 48 hours
-		snaps := ListSnapshots(dataset)
+	// 2. retention: clean up auto snapshots older than 48 hours
+		snaps := ListInstanceSnapshots(inst.Name)
 		for _, snap := range snaps {
 			if snap.IsAutomatic && now.Sub(snap.CreatedAt) > 48*time.Hour {
-				if err := DestroySnapshot(snap.Name); err != nil {
+				if err := DestroyInstanceSnapshot(snap.VMName, snap.Name); err != nil {
 					fmt.Printf("[AutoSnapshot] Hata - Eski snapshot silinemedi %s: %v\n", snap.Name, err)
 				} else {
 					fmt.Printf("[AutoSnapshot] Başarılı - 48 saatten eski snapshot silindi: %s\n", snap.Name)
@@ -223,20 +180,19 @@ func handleGetSnapshots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inst, _, err := c.GetInstance(vmName)
+	_, _, err = c.GetInstance(vmName)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("VM bulunamadı: %v", err), http.StatusNotFound)
 		return
 	}
 
-	dataset := getDatasetForInstance(vmName, inst.Type)
-	snaps := ListSnapshots(dataset)
+	snaps := ListInstanceSnapshots(vmName)
 
 	type SnapshotAPIResponse struct {
 		ID          string    `json:"id"`
 		Name        string    `json:"name"`
 		ShortName   string    `json:"short_name"`
-		Dataset     string    `json:"dataset"`
+		VMName      string    `json:"vm_name"`
 		CreatedAt   time.Time `json:"created_at"`
 		IsAutomatic bool      `json:"is_automatic"`
 	}
@@ -247,7 +203,7 @@ func handleGetSnapshots(w http.ResponseWriter, r *http.Request) {
 			ID:          fmt.Sprintf("%s@%s", vmName, s.ShortName),
 			Name:        s.Name,
 			ShortName:   s.ShortName,
-			Dataset:     s.Dataset,
+			VMName:      s.VMName,
 			CreatedAt:   s.CreatedAt,
 			IsAutomatic: s.IsAutomatic,
 		})
@@ -262,11 +218,19 @@ func handleGetSnapshots(w http.ResponseWriter, r *http.Request) {
 
 // API: POST /api/snapshots (Body: {"vm": "vmName"})
 func handleCreateSnapshotAPI(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		VM string `json:"vm"`
+	vm := r.FormValue("vm")
+	if vm == "" {
+		// Fallback to JSON if not form encoded
+		var req struct {
+			VM string `json:"vm"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.VM != "" {
+			vm = req.VM
+		}
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.VM == "" {
-		http.Error(w, "Geçersiz istek gövdesi (beklenen: {'vm': 'vmName'})", http.StatusBadRequest)
+
+	if vm == "" {
+		http.Error(w, "Geçersiz istek gövdesi (vm parametresi eksik)", http.StatusBadRequest)
 		return
 	}
 
@@ -277,19 +241,24 @@ func handleCreateSnapshotAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inst, _, err := c.GetInstance(req.VM)
+	_, _, err = c.GetInstance(vm)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("VM bulunamadı: %v", err), http.StatusNotFound)
 		return
 	}
 
-	dataset := getDatasetForInstance(req.VM, inst.Type)
-	if err := CreateSnapshot(dataset); err != nil {
+	startTime := time.Now()
+	
+	if err := CreateInstanceSnapshot(vm); err != nil {
+		duration := time.Since(startTime)
+		LogSystemEvent(getUsername(r), "Yedekleme", vm, fmt.Sprintf("Başarısız (%.1f sn)", duration.Seconds()))
 		http.Error(w, fmt.Sprintf("Snapshot oluşturulamadı: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	LogSystemEvent(getUsername(r), "Yedekleme", req.VM, "Başarılı")
+	duration := time.Since(startTime)
+	LogSystemEvent(getUsername(r), "Yedekleme", vm, fmt.Sprintf("Başarılı (%.1f sn)", duration.Seconds()))
+	
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
@@ -305,10 +274,19 @@ func handleRollbackSnapshotAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Confirm bool `json:"confirm"`
+	confirmVal := r.FormValue("confirm")
+	confirm := (confirmVal == "true" || confirmVal == "1")
+
+	if !confirm {
+		var req struct {
+			Confirm bool `json:"confirm"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Confirm {
+			confirm = true
+		}
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || !req.Confirm {
+
+	if !confirm {
 		http.Error(w, "Geri dönmek için onay vermelisiniz ('confirm': true)", http.StatusBadRequest)
 		return
 	}
@@ -328,14 +306,11 @@ func handleRollbackSnapshotAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inst, _, err := c.GetInstance(vmName)
+	_, _, err = c.GetInstance(vmName)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("VM bulunamadı: %v", err), http.StatusNotFound)
 		return
 	}
-
-	dataset := getDatasetForInstance(vmName, inst.Type)
-	fullSnapshotName := fmt.Sprintf("%s@%s", dataset, snapShortName)
 
 	status, err := GetVMStatus(vmName)
 	if err != nil {
@@ -343,25 +318,31 @@ func handleRollbackSnapshotAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	startTime := time.Now()
+
 	wasRunning := status.Status == "running"
 
 	// If the VM is running, stop it first
 	if wasRunning {
 		fmt.Printf("[Rollback] VM %s durduruluyor...\n", vmName)
 		if err := StopVM(vmName); err != nil {
+			duration := time.Since(startTime)
+			LogSystemEvent(getUsername(r), "Geri Yükleme", vmName, fmt.Sprintf("Başarısız (VM Durdurulamadı) (%.1f sn)", duration.Seconds()))
 			http.Error(w, fmt.Sprintf("VM durdurulamadı: %v", err), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	// Rollback
-	fmt.Printf("[Rollback] ZFS geri yükleme yapılıyor: %s...\n", fullSnapshotName)
-	if err := RollbackSnapshot(fullSnapshotName); err != nil {
+	fmt.Printf("[Rollback] Geri yükleme yapılıyor: %s...\n", snapShortName)
+	if err := RollbackInstanceSnapshot(vmName, snapShortName); err != nil {
 		// Restart VM if it was running before failure
 		if wasRunning {
 			_ = StartVM(vmName)
 		}
-		http.Error(w, fmt.Sprintf("ZFS geri yükleme başarısız: %v", err), http.StatusInternalServerError)
+		duration := time.Since(startTime)
+		LogSystemEvent(getUsername(r), "Geri Yükleme", vmName, fmt.Sprintf("Başarısız (%.1f sn)", duration.Seconds()))
+		http.Error(w, fmt.Sprintf("Geri yükleme başarısız: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -369,11 +350,14 @@ func handleRollbackSnapshotAPI(w http.ResponseWriter, r *http.Request) {
 	if wasRunning {
 		fmt.Printf("[Rollback] VM %s yeniden başlatılıyor...\n", vmName)
 		if err := StartVM(vmName); err != nil {
+			duration := time.Since(startTime)
+			LogSystemEvent(getUsername(r), "Geri Yükleme", vmName, fmt.Sprintf("Başarısız (Başlatılamadı) (%.1f sn)", duration.Seconds()))
 			http.Error(w, fmt.Sprintf("VM geri yükleme sonrası başlatılamadı: %v", err), http.StatusInternalServerError)
 			return
 		}
 	}
 
+	duration := time.Since(startTime)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -384,7 +368,7 @@ func handleRollbackSnapshotAPI(w http.ResponseWriter, r *http.Request) {
 		message = "Geri dönüldü, VM kapalı kalmaya devam ediyor."
 	}
 
-	LogSystemEvent(getUsername(r), "Geri Yükleme", vmName, "Başarılı")
+	LogSystemEvent(getUsername(r), "Geri Yükleme", vmName, fmt.Sprintf("Başarılı (%.1f sn)", duration.Seconds()))
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": message,
 	})
@@ -404,21 +388,7 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	socketPath := "/var/lib/incus/unix.socket"
-	c, err := incus.ConnectIncusUnix(socketPath, nil)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Incus bağlantı hatası: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	inst, _, err := c.GetInstance(name)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("VM bulunamadı: %v", err), http.StatusNotFound)
-		return
-	}
-
-	dataset := getDatasetForInstance(name, inst.Type)
-	snaps := ListSnapshots(dataset)
+	snaps := ListInstanceSnapshots(name)
 
 	type SnapshotViewItem struct {
 		ID            string    `json:"id"`
@@ -451,6 +421,26 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 		ramVal = 1
 	}
 
+	// Fetch backup logs for this VM
+	type VMLog struct {
+		SystemLog
+		IsSuccess bool
+	}
+	var vmLogs []VMLog
+	rows, err := db.Query("SELECT id, datetime(timestamp, 'localtime'), user, action, target, status FROM system_logs WHERE target = ? AND action IN ('Yedekleme', 'Geri Yükleme', 'Yedek Silme') ORDER BY id DESC LIMIT 10", name)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var l SystemLog
+			if err := rows.Scan(&l.ID, &l.Timestamp, &l.User, &l.Action, &l.Target, &l.Status); err == nil {
+				vmLogs = append(vmLogs, VMLog{
+					SystemLog: l,
+					IsSuccess: strings.Contains(l.Status, "Başarılı"),
+				})
+			}
+		}
+	}
+
 	data := struct {
 		Name      string
 		Status    string
@@ -461,6 +451,7 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 		IPAddress string
 		CreatedAt string
 		Snapshots []SnapshotViewItem
+		Logs      []VMLog
 	}{
 		Name:      status.Name,
 		Status:    status.Status,
@@ -471,6 +462,7 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 		IPAddress: status.IPAddress,
 		CreatedAt: status.CreatedAt,
 		Snapshots: snapItems,
+		Logs:      vmLogs,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -480,57 +472,21 @@ func handleGetVMDetailHTML(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ListAllSnapshots executes ZFS command to list all snapshots in the system
+// ListAllSnapshots gathers snapshots from all Incus instances
 func ListAllSnapshots() []Snapshot {
-	cmd := exec.Command("zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,creation")
-	output, err := cmd.Output()
+	vms, err := getAllVMNames()
 	if err != nil {
-		fmt.Printf("[ZFS] list all error: %v\n", err)
+		fmt.Printf("[Incus] ListAllSnapshots error getting VMs: %v\n", err)
 		return []Snapshot{}
 	}
 
-	var snapshots []Snapshot
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 {
-			fields = strings.Fields(line)
-			if len(fields) < 2 {
-				continue
-			}
-		}
-
-		fullName := fields[0]
-		epochStr := fields[1]
-
-		epoch, err := strconv.ParseInt(epochStr, 10, 64)
-		if err != nil {
-			continue
-		}
-
-		parts := strings.SplitN(fullName, "@", 2)
-		if len(parts) < 2 {
-			continue
-		}
-		dsName := parts[0]
-		shortName := parts[1]
-
-		createdAt := time.Unix(epoch, 0)
-		isAutomatic := strings.HasPrefix(shortName, "auto_")
-
-		snapshots = append(snapshots, Snapshot{
-			Name:        fullName,
-			ShortName:   shortName,
-			Dataset:     dsName,
-			CreatedAt:   createdAt,
-			IsAutomatic: isAutomatic,
-		})
+	var allSnapshots []Snapshot
+	for _, vm := range vms {
+		snaps := ListInstanceSnapshots(vm)
+		allSnapshots = append(allSnapshots, snaps...)
 	}
 
-	return snapshots
+	return allSnapshots
 }
 
 // GET /api/backup/page
@@ -568,7 +524,15 @@ func handleDestroySnapshotAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := DestroySnapshot(snapName); err != nil {
+	parts := strings.SplitN(snapName, "@", 2)
+	if len(parts) < 2 {
+		http.Error(w, "Geçersiz Yedek formatı", http.StatusBadRequest)
+		return
+	}
+	vmName := parts[0]
+	shortName := parts[1]
+
+	if err := DestroyInstanceSnapshot(vmName, shortName); err != nil {
 		LogSystemEvent(getUsername(r), "Yedek Silme", snapName, "Başarısız")
 		http.Error(w, fmt.Sprintf("Yedek silinemedi: %v", err), http.StatusInternalServerError)
 		return

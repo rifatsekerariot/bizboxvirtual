@@ -363,10 +363,9 @@ type CreateVMRequest struct {
 	RAM   int    `json:"ram"`
 }
 
-func handleGetVMs(w http.ResponseWriter, r *http.Request) {
+func handleGetDashboard(w http.ResponseWriter, r *http.Request) {
 	socketPath := "/var/lib/incus/unix.socket"
 
-	// If it is an HTMX request, we return the HTML dashboard fragment.
 	if r.Header.Get("HX-Request") == "true" {
 		c, err := incus.ConnectIncusUnix(socketPath, nil)
 		if err != nil {
@@ -384,48 +383,11 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		type DashboardInstance struct {
-			Name      string
-			Type      string
-			Status    string
-			CPULimit  string
-			RAMLimit  string
-			CreatedAt string
-		}
-
-		var dashboardInstances []DashboardInstance
 		runningCount := 0
-
 		for _, inst := range instances {
-			statusStr := strings.ToLower(inst.Status)
-			if statusStr == "running" {
+			if strings.ToLower(inst.Status) == "running" {
 				runningCount++
 			}
-
-			cpuLimit := inst.Config["limits.cpu"]
-			if cpuLimit == "" {
-				cpuLimit = inst.ExpandedConfig["limits.cpu"]
-			}
-			if cpuLimit == "" {
-				cpuLimit = "1"
-			}
-
-			ramLimit := inst.Config["limits.memory"]
-			if ramLimit == "" {
-				ramLimit = inst.ExpandedConfig["limits.memory"]
-			}
-			if ramLimit == "" {
-				ramLimit = "1GiB"
-			}
-
-			dashboardInstances = append(dashboardInstances, DashboardInstance{
-				Name:      inst.Name,
-				Type:      inst.Type,
-				Status:    statusStr,
-				CPULimit:  cpuLimit,
-				RAMLimit:  ramLimit,
-				CreatedAt: inst.CreatedAt.Format("2006-01-02 15:04"),
-			})
 		}
 
 		ramPercent, ramFormatted, err := getHostMemoryUsage()
@@ -475,7 +437,6 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 			DiskPercent   int
 			DiskFormatted string
 			LastBackup    string
-			Instances     []DashboardInstance
 			Logs          []SystemLog
 		}{
 			RunningCount:  runningCount,
@@ -485,13 +446,88 @@ func handleGetVMs(w http.ResponseWriter, r *http.Request) {
 			DiskPercent:   diskPercent,
 			DiskFormatted: diskFormatted,
 			LastBackup:    lastBackupStr,
-			Instances:     dashboardInstances,
 			Logs:          logs,
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		templates.ExecuteTemplate(w, "dashboard.html", data)
+		return
+	}
+	
+	http.Error(w, "Sadece HTMX isteklerine izin verilir", http.StatusBadRequest)
+}
+
+func handleGetVMs(w http.ResponseWriter, r *http.Request) {
+	socketPath := "/var/lib/incus/unix.socket"
+
+	// If it is an HTMX request, we return the HTML dashboard fragment.
+	if r.Header.Get("HX-Request") == "true" {
+		c, err := incus.ConnectIncusUnix(socketPath, nil)
+		if err != nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			templates.ExecuteTemplate(w, "error.html", nil)
+			return
+		}
+
+		instances, err := c.GetInstances(api.InstanceTypeAny)
+		if err != nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			templates.ExecuteTemplate(w, "error.html", nil)
+			return
+		}
+
+		type DashboardInstance struct {
+			Name      string
+			Type      string
+			Status    string
+			CPULimit  string
+			RAMLimit  string
+			CreatedAt string
+		}
+
+		var dashboardInstances []DashboardInstance
+
+		for _, inst := range instances {
+			statusStr := strings.ToLower(inst.Status)
+
+			cpuLimit := inst.Config["limits.cpu"]
+			if cpuLimit == "" {
+				cpuLimit = inst.ExpandedConfig["limits.cpu"]
+			}
+			if cpuLimit == "" {
+				cpuLimit = "1"
+			}
+
+			ramLimit := inst.Config["limits.memory"]
+			if ramLimit == "" {
+				ramLimit = inst.ExpandedConfig["limits.memory"]
+			}
+			if ramLimit == "" {
+				ramLimit = "1GiB"
+			}
+
+			dashboardInstances = append(dashboardInstances, DashboardInstance{
+				Name:      inst.Name,
+				Type:      inst.Type,
+				Status:    statusStr,
+				CPULimit:  cpuLimit,
+				RAMLimit:  ramLimit,
+				CreatedAt: inst.CreatedAt.Format("2006-01-02 15:04"),
+			})
+		}
+
+		data := struct {
+			Instances []DashboardInstance
+		}{
+			Instances: dashboardInstances,
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		templates.ExecuteTemplate(w, "vms.html", data)
 		return
 	}
 
@@ -1077,6 +1113,7 @@ func main() {
 		mux.HandleFunc("GET /logout", handleLogout)
 		mux.HandleFunc("GET /console/{vm_name}", handleGetConsole)
 		mux.HandleFunc("GET /ws/console/{vm_name}", handleConsoleWS)
+		mux.HandleFunc("GET /api/dashboard", handleGetDashboard)
 		mux.HandleFunc("GET /api/vms", handleGetVMs)
 		mux.HandleFunc("GET /api/vms/{name}", handleGetVMDetail)
 		mux.HandleFunc("POST /api/vms", handleCreateVM)
@@ -1125,6 +1162,15 @@ func main() {
 		mux.HandleFunc("POST /api/updates/start", handleStartUpdate)
 		mux.HandleFunc("GET /api/updates/status", handleGetUpdateStatus)
 		mux.HandleFunc("POST /api/updates/reset", handleResetUpdate)
+
+		mux.HandleFunc("GET /api/network/uplinks", handleGetUplinks)
+		mux.HandleFunc("POST /api/network/uplinks/{iface}/attach", handleAttachUplink)
+		mux.HandleFunc("POST /api/network/uplinks/{iface}/detach", handleDetachUplink)
+
+		// Storage endpoints
+		mux.HandleFunc("GET /api/storage", handleGetStoragePage)
+		mux.HandleFunc("POST /api/storage/create", handleCreateDatastoreAPI)
+
 
 		fmt.Println("REST API sunucusu 0.0.0.0:8080 adresinde başlatılıyor...")
 		err := http.ListenAndServe("0.0.0.0:8080", AuthMiddleware(mux))

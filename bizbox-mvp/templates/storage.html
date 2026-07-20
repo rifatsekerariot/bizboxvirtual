@@ -1,0 +1,132 @@
+<div class="header-section fade-in">
+    <div class="header-title">
+      <h1>Datastore Yönetimi</h1>
+      <p>Sisteminize bağlı fiziksel diskleri listeleyin ve ZFS depolama havuzları oluşturun.</p>
+    </div>
+</div>
+
+<div class="content-card fade-in" style="animation-delay: 0.1s;">
+    <h3>Bağlı Olmayan Diskler</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+        Sisteminizde bulunan ancak herhangi bir dosya sistemine bağlı olmayan diskler aşağıda listelenmiştir. 
+        Bu diskleri formatlayarak yeni bir Datastore (ZFS Pool) oluşturabilirsiniz.
+    </p>
+
+    {{if .Disks}}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Disk Adı</th>
+                <th>Boyut</th>
+                <th>Tür</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Disks}}
+            <tr>
+                <td style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">/dev/{{.Name}}</td>
+                <td><span class="badge">{{.Size}}</span></td>
+                <td>{{.Type}}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="triggerCreateDatastore('{{.Name}}')">Datastore Oluştur</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <div style="text-align: center; padding: 40px 20px; border: 2px dashed var(--border-color); border-radius: var(--radius-card);">
+        <h5 style="margin: 0; font-size: 15px; color: var(--text-primary);">Boş disk bulunamadı</h5>
+        <p style="margin: 8px 0 0 0; font-size: 13px; color: var(--text-secondary);">Sisteme yeni bir fiziksel disk eklediğinizde burada görünecektir.</p>
+    </div>
+    {{end}}
+</div>
+
+<!-- Create Datastore Modal -->
+<div id="datastore-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--card-bg); border-radius: var(--radius-card); padding: 24px; width: 450px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);">
+        <h3 style="margin-top: 0; color: var(--text-primary); font-size: 18px; display: flex; align-items: center; gap: 8px;">
+            <svg style="width: 24px; height: 24px; color: var(--primary-color);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Yeni Datastore (ZFS Pool)
+        </h3>
+        
+        <div style="margin: 16px 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">
+            Seçilen disk: <strong id="selected-disk" style="color: var(--text-primary); font-family: 'IBM Plex Mono', monospace;"></strong>
+            <br/><br/>
+            <span style="color: var(--error-color); font-weight: 600;">DİKKAT:</span> Bu işlem seçili diskteki tüm verileri kalıcı olarak silecektir. Lütfen havuz adını girin.
+        </div>
+        
+        <div class="form-group">
+            <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500;">Havuz Adı (Örn: rft, zpool1)</label>
+            <input type="text" id="pool-name-input" placeholder="rft" style="width: 100%; padding: 10px; border-radius: var(--radius-btn); border: 1px solid var(--border-color); font-family: 'Inter';">
+        </div>
+
+        <div id="datastore-loading" style="display: none; align-items: center; gap: 10px; margin-top: 15px; color: var(--primary-color); font-size: 14px; font-weight: 500;">
+            <div class="spinner" style="width: 20px; height: 20px; border-width: 3px;"></div>
+            İşlem yapılıyor, lütfen bekleyin...
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;" id="datastore-actions">
+            <button class="btn btn-secondary" onclick="closeDatastoreModal()">İptal</button>
+            <button class="btn btn-danger" onclick="executeCreateDatastore()">Formatla ve Oluştur</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentDisk = null;
+
+    window.triggerCreateDatastore = function(diskName) {
+        currentDisk = diskName;
+        document.getElementById('selected-disk').innerText = '/dev/' + diskName;
+        document.getElementById('pool-name-input').value = 'rft';
+        
+        const modal = document.getElementById('datastore-modal');
+        modal.style.display = 'flex';
+    }
+
+    window.closeDatastoreModal = function() {
+        currentDisk = null;
+        document.getElementById('datastore-modal').style.display = 'none';
+        document.getElementById('pool-name-input').value = '';
+    }
+
+    window.executeCreateDatastore = function() {
+        if (!currentDisk) return;
+        
+        const poolName = document.getElementById('pool-name-input').value.trim();
+        if (!poolName) {
+            alert("Lütfen havuz adı girin.");
+            return;
+        }
+
+        document.getElementById('datastore-actions').style.display = 'none';
+        document.getElementById('datastore-loading').style.display = 'flex';
+
+        fetch('/api/storage/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ pool_name: poolName, disk_name: currentDisk })
+        })
+        .then(resp => {
+            if (!resp.ok) {
+                return resp.text().then(txt => { throw new Error(txt); });
+            }
+            return resp.json();
+        })
+        .then(data => {
+            alert(data.message);
+            closeDatastoreModal();
+            // Refresh storage page
+            if (typeof htmx !== 'undefined') {
+                htmx.trigger('#dashboard-content', 'load');
+            }
+        })
+        .catch(err => {
+            document.getElementById('datastore-actions').style.display = 'flex';
+            document.getElementById('datastore-loading').style.display = 'none';
+            alert("Hata: " + err.message);
+        });
+    }
+</script>

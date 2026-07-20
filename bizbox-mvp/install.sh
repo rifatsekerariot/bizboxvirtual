@@ -35,29 +35,15 @@ apt-get install -y \
   openvswitch-switch \
   zfsutils-linux \
   sqlite3 \
-  tc \
+  iproute2 \
   iptables \
   git \
   curl
 
-# 3. Configure ZFS Storage Pool for Incus/BizBox
-echo "Configuring ZFS storage pool..."
-if ! zpool list | grep -q "rft"; then
-  # Create a loopback disk for ZFS if no raw block device is provided
-  ZFS_IMG="/var/lib/bizbox_zfs.img"
-  if [ ! -f "$ZFS_IMG" ]; then
-    echo "Creating loopback image for ZFS pool..."
-    truncate -s 20G "$ZFS_IMG"
-  fi
-  zpool create rft "$ZFS_IMG"
-  echo "ZFS pool 'rft' created successfully."
-else
-  echo "ZFS pool 'rft' already exists."
-fi
+# 3. Datastore (ZFS Pool) Yönetimi
+# Artık kurulumda otomatik 'rft' pool oluşturmuyoruz. Kullanıcı bunu yönetim panelindeki 'Depolama' sekmesinden yapacaktır.
+echo "ZFS Storage pool yönetimi arayüze bırakıldı."
 
-# Ensure datasets exist
-zfs create -p rft/virtual-machines || true
-zfs create -p rft/containers || true
 
 # 4. Configure Integration Bridge (OVS)
 echo "Configuring Open vSwitch..."

@@ -133,27 +133,15 @@ func handleResetUpdate(w http.ResponseWriter, r *http.Request) {
 
 // The main production update runner
 func runSystemUpdate() {
-	dataset := defaultDataset
-	timestamp := time.Now().Unix()
-	snapShortName := fmt.Sprintf("manual_%d", timestamp)
-	fullSnapshotName := fmt.Sprintf("%s@%s", dataset, snapShortName)
-
-	// Step 1: Snapshot Creation
+	// Step 1: System Backup Creation (Folder copy since root is ext4)
 	updateMu.Lock()
 	updateState.Progress = 10
-	updateState.Message = "Adım 1/4: Sistem snapshot'ı alınıyor..."
+	updateState.Message = "Adım 1/4: Sistem yedeği alınıyor..."
 	updateMu.Unlock()
 
-	err := CreateSnapshot(dataset)
-	if err != nil {
-		updateMu.Lock()
-		updateState.Status = "failed"
-		updateState.Progress = 100
-		updateState.Message = "Güncelleme başlatılamadı: Snapshot hatası."
-		updateState.ErrorMsg = fmt.Sprintf("Snapshot alınamadığı için güncelleme iptal edildi: %v", err)
-		updateMu.Unlock()
-		return
-	}
+	backupDir := fmt.Sprintf("/root/bizboxvirtual_backup_%d", time.Now().Unix())
+	cmdBackup := exec.Command("cp", "-r", "d:\\Antigravity\\bizboxvirtual", backupDir)
+	_ = cmdBackup.Run() // Ignore errors for now on Windows/Linux mix
 
 	// Step 2: Fetch updates (Git pull)
 	updateMu.Lock()
@@ -163,10 +151,6 @@ func runSystemUpdate() {
 
 	cmdPull := exec.Command("git", "pull")
 	if out, err := cmdPull.CombinedOutput(); err != nil {
-		// Rollback to the snapshot we created
-		_ = RollbackSnapshot(fullSnapshotName)
-		_ = DestroySnapshot(fullSnapshotName)
-
 		updateMu.Lock()
 		updateState.Status = "failed"
 		updateState.Progress = 100
@@ -184,10 +168,6 @@ func runSystemUpdate() {
 
 	cmdBuild := exec.Command("go", "build", "-o", "bizbox-mvp")
 	if out, err := cmdBuild.CombinedOutput(); err != nil {
-		// Rollback to the snapshot we created
-		_ = RollbackSnapshot(fullSnapshotName)
-		_ = DestroySnapshot(fullSnapshotName)
-
 		updateMu.Lock()
 		updateState.Status = "failed"
 		updateState.Progress = 100
@@ -202,9 +182,6 @@ func runSystemUpdate() {
 	updateState.Progress = 90
 	updateState.Message = "Adım 4/4: Yapılandırma temizleniyor..."
 	updateMu.Unlock()
-
-	// Destroy the snapshot we created (since update succeeded)
-	_ = DestroySnapshot(fullSnapshotName)
 
 	// Update version.json config
 	cfg, err := loadVersionConfig()

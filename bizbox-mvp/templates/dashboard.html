@@ -1,4 +1,4 @@
-<div hx-get="/api/vms" hx-trigger="every 10s" hx-swap="outerHTML" class="dashboard-poll-container" style="width: 100%;">
+<div hx-get="/api/dashboard" hx-trigger="every 10s" hx-swap="outerHTML" class="dashboard-poll-container" style="width: 100%;">
   <!-- Status Cards Grid -->
   <div class="status-grid">
     <!-- Card 1: Çalışan Sistemler -->
@@ -48,74 +48,7 @@
     </div>
   </div>
 
-  <!-- Bottom Section: VM Table or Empty State -->
-  <div class="content-card">
-    <div class="content-card-header">
-      <h2>Sanal Makineler ve Konteynerler</h2>
-      <button class="btn btn-primary" onclick="openCreateModal()">Yeni Sistem</button>
-    </div>
-    
-    {{if .Instances}}
-    <div class="table-responsive">
-      <table class="vm-table">
-        <thead>
-          <tr>
-            <th>İsim</th>
-            <th>Tip</th>
-            <th>Durum</th>
-            <th>CPU</th>
-            <th>RAM</th>
-            <th>Oluşturulma Tarihi</th>
-            <th style="text-align: right;">İşlemler</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Instances}}
-          <tr>
-            <td class="font-bold"><a href="#" onclick="openVMDetail(event, '{{.Name}}')" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">{{.Name}}</a></td>
-            <td>
-              <span class="badge badge-type">{{.Type}}</span>
-            </td>
-            <td>
-              <div class="status-cell">
-                <span class="status-dot {{if eq .Status "running"}}status-running{{else}}status-stopped{{end}}"></span>
-                <span class="status-text">{{if eq .Status "running"}}Çalışıyor{{else}}Durduruldu{{end}}</span>
-              </div>
-            </td>
-            <td class="font-mono">{{.CPULimit}}</td>
-            <td class="font-mono">{{.RAMLimit}}</td>
-            <td>{{.CreatedAt}}</td>
-            <td style="text-align: right; position: relative;">
-              <button class="action-btn" onclick="toggleDropdown(event, 'dropdown-{{.Name}}')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-              </button>
-              <div id="dropdown-{{.Name}}" class="dropdown-menu">
-                <button class="dropdown-item" onclick="openVMDetail(event, '{{.Name}}')">Yedekler & Detaylar</button>
-                <button class="dropdown-item" onclick="handleInstanceAction('{{.Name}}', '{{if eq .Status "running"}}stop{{else}}start{{end}}')">
-                  {{if eq .Status "running"}}Durdur{{else}}Başlat{{end}}
-                </button>
-                <button class="dropdown-item" onclick="connectConsole('{{.Name}}')">Konsola Bağlan</button>
-                <button class="dropdown-item" onclick="openNetworkModal('{{.Name}}')">Ağ Değiştir</button>
-                <button class="dropdown-item text-danger" onclick="openDeleteModal('{{.Name}}')">Sil</button>
-              </div>
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
-    {{else}}
-    <!-- Empty State -->
-    <div class="empty-state">
-      <div class="empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-      </div>
-      <h3>Henüz bir sistem oluşturmadınız</h3>
-      <p>Incus altyapısı üzerinde sanal makine veya konteyner oluşturarak hemen başlayın.</p>
-      <button class="btn btn-primary" onclick="openCreateModal()">İlk Sisteminizi Oluşturun</button>
-    </div>
-    {{end}}
-  </div>
+  <!-- Sanal makineler tablosu vms.html içine taşındı -->
 
   <!-- Audit logs panel (ESXi tasks list style) -->
   <div class="content-card" style="margin-top: 24px;">

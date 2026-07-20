@@ -8,6 +8,9 @@
     <button class="tab-link" onclick="switchNetworkTab(event, 'tab-qos')">
       Trafik Önceliği (QoS)
     </button>
+    <button class="tab-link" onclick="switchNetworkTab(event, 'tab-uplinks')">
+      Dış Bağlantılar (Uplinks)
+    </button>
   </div>
 
   <!-- Tab Content: Segments -->
@@ -254,6 +257,34 @@
     </div>
   </div>
 
+  <!-- Tab Content: Uplinks -->
+  <div id="tab-uplinks" class="tab-panel" style="display: none;">
+    <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <div>
+        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Dış Bağlantı Yönetimi</h2>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Fiziksel ağ arayüzlerini ve dış köprü (bridge) ayarlarını yönetin</p>
+      </div>
+    </div>
+    
+    <div class="table-responsive">
+      <table class="vm-table">
+        <thead>
+          <tr>
+            <th>Arayüz Adı</th>
+            <th>Durum</th>
+            <th>IP Adresi</th>
+            <th style="width: 200px;">İşlemler</th>
+          </tr>
+        </thead>
+        <tbody id="uplinks-table-body">
+          <tr>
+            <td colspan="4" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <script>
     function switchNetworkTab(event, tabId) {
       if (event) event.preventDefault();
@@ -262,7 +293,10 @@
         t.classList.remove('active');
       });
       
-      document.getElementById(tabId).style.display = 'block';
+      const targetPanel = document.getElementById(tabId);
+      if (targetPanel) {
+        targetPanel.style.display = 'block';
+      }
       
       const btn = event ? event.currentTarget : document.querySelector(".tab-link[onclick*='" + tabId + "']");
       if (btn) {
@@ -270,6 +304,11 @@
       }
       
       localStorage.setItem('activeNetworkTab', tabId);
+
+      // Load uplinks dynamically if needed
+      if (tabId === 'tab-uplinks' && typeof window.loadUplinks === 'function') {
+        window.loadUplinks();
+      }
     }
 
     // Restore active tab after HTMX swap
@@ -277,5 +316,65 @@
       const activeTab = localStorage.getItem('activeNetworkTab') || 'tab-segments';
       switchNetworkTab(null, activeTab);
     })();
+
+    window.loadUplinks = function() {
+      const tbody = document.getElementById('uplinks-table-body');
+      if (!tbody) return;
+      
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</td></tr>';
+      
+      fetch('/api/network/uplinks')
+        .then(res => res.json())
+        .then(data => {
+          if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Dış bağlantı bulunamadı.</td></tr>';
+            return;
+          }
+          
+          let html = '';
+          data.forEach(up => {
+            let statusBadge = up.Status === 'up' 
+              ? '<span class="badge" style="background-color: rgba(22, 163, 74, 0.1); color: var(--success-color);">Aktif</span>'
+              : '<span class="badge" style="background-color: rgba(220, 38, 38, 0.1); color: var(--danger-color);">Pasif</span>';
+              
+            let attachBtn = up.Attached 
+              ? `<button class="btn btn-secondary" onclick="detachUplink('${up.Name}')" style="color: var(--danger-color); border-color: var(--danger-color);">Bağlantıyı Kes</button>`
+              : `<button class="btn btn-primary" onclick="attachUplink('${up.Name}')">Köprüye Ekle</button>`;
+              
+            html += `
+              <tr>
+                <td class="font-bold font-mono">${up.Name}</td>
+                <td>${statusBadge}</td>
+                <td class="font-mono">${up.IPs && up.IPs.length > 0 ? up.IPs.join('<br>') : '<span style="color:var(--text-secondary)">IP Yok</span>'}</td>
+                <td>${attachBtn}</td>
+              </tr>
+            `;
+          });
+          tbody.innerHTML = html;
+        })
+        .catch(err => {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--danger-color); padding: 20px;">Hata: ${err.message}</td></tr>`;
+        });
+    };
+
+    window.attachUplink = function(iface) {
+      if (!confirm(`'${iface}' arayüzünü dış köprüye (br-ex) eklemek istediğinize emin misiniz?`)) return;
+      fetch(`/api/network/uplinks/${iface}/attach`, { method: 'POST' })
+        .then(res => {
+          if (!res.ok) throw new Error("İşlem başarısız");
+          window.loadUplinks();
+        })
+        .catch(err => alert(err.message));
+    };
+
+    window.detachUplink = function(iface) {
+      if (!confirm(`'${iface}' arayüzünü dış köprüden çıkarmak istediğinize emin misiniz?`)) return;
+      fetch(`/api/network/uplinks/${iface}/detach`, { method: 'POST' })
+        .then(res => {
+          if (!res.ok) throw new Error("İşlem başarısız");
+          window.loadUplinks();
+        })
+        .catch(err => alert(err.message));
+    };
   </script>
 </div>

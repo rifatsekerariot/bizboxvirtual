@@ -271,8 +271,8 @@
 
   <!-- Tab buttons -->
   <div class="tabs-nav">
-    <button class="tab-btn active" onclick="switchDetailTab(this, 'general-tab')">Genel Bilgiler</button>
-    <button class="tab-btn" onclick="switchDetailTab(this, 'snapshots-tab')">Yedekler (ZFS Snapshots)</button>
+    <button class="tab-btn active" data-target="general-tab">Genel Bilgiler</button>
+    <button class="tab-btn" data-target="snapshots-tab">Yedekler (ZFS Snapshots)</button>
   </div>
 
   <!-- Tab 1: Genel Bilgiler -->
@@ -355,7 +355,7 @@
             Yeşil noktalar otomatik, mavi noktalar manuel alınan yedekleri gösterir.
           </p>
         </div>
-        <button class="btn btn-primary" onclick="triggerManualSnapshot('{{.Name}}')">Yedek Al (Manuel)</button>
+        <button class="btn btn-primary" data-action="manual-snapshot" data-vm="{{.Name}}">Yedek Al (Manuel)</button>
       </div>
 
       {{if .Snapshots}}
@@ -363,20 +363,20 @@
           <div class="timeline-line"></div>
           <div class="timeline-points">
             {{range .Snapshots}}
-              <div class="timeline-point-container" onclick="toggleTimelinePopover(event, 'popover-{{.ShortName}}')">
+              <div class="timeline-point-container" data-action="toggle-popover" data-popover="popover-{{.ShortName}}">
                 <div class="timeline-point {{if .IsAutomatic}}auto-snap{{else}}manual-snap{{end}}"></div>
                 <div class="timeline-tooltip">{{.FormattedDate}}</div>
                 
                 <!-- Popover -->
-                <div id="popover-{{.ShortName}}" class="timeline-popover" onclick="event.stopPropagation()">
+                <div id="popover-{{.ShortName}}" class="timeline-popover">
                   <div class="popover-header">
                     <span>Yedek Noktası</span>
-                    <button class="popover-close" onclick="closeTimelinePopover(event, 'popover-{{.ShortName}}')">&times;</button>
+                    <button class="popover-close" data-action="close-popover" data-popover="popover-{{.ShortName}}">&times;</button>
                   </div>
                   <div class="popover-body">
                     <p><strong>Tarih:</strong> {{.FormattedDate}}</p>
                     <p><strong>Tür:</strong> {{if .IsAutomatic}}Otomatik (15dk){{else}}Manuel{{end}}</p>
-                    <button class="btn btn-primary btn-xs mt-2" style="width: 100%; justify-content: center;" onclick="triggerOpenRollback('{{.ID}}', '{{.FormattedDate}}')">Geri Dön</button>
+                    <button class="btn btn-primary btn-xs mt-2" style="width: 100%; justify-content: center;" data-action="open-rollback" data-snapshot-id="{{.ID}}" data-snapshot-date="{{.FormattedDate}}">Geri Dön</button>
                   </div>
                 </div>
               </div>
@@ -389,8 +389,46 @@
           <svg style="width: 48px; height: 48px; color: #94A3B8; margin-bottom: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
           <h5 style="margin: 0; font-size: 14px; color: #1E293B;">Henüz yedek bulunmuyor</h5>
           <p style="margin: 4px 0 16px 0; font-size: 12px; color: #64748B;">Sistem otomatik olarak 15 dakikada bir yedek alır veya şu an kendiniz manuel yedek oluşturabilirsiniz.</p>
-          <button class="btn btn-primary btn-sm" onclick="triggerManualSnapshot('{{.Name}}')">İlk Yedeği Al</button>
+          <button class="btn btn-primary btn-sm" data-action="manual-snapshot" data-vm="{{.Name}}">İlk Yedeği Al</button>
         </div>
+      {{end}}
+    </div>
+
+    <!-- İşlem Geçmişi (Loglar) -->
+    <div class="content-card" style="margin-top: 24px; padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-card); background-color: var(--card-bg);">
+      <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <span>📜 İşlem Geçmişi (Yedekleme & Geri Yükleme)</span>
+      </h3>
+      
+      {{if .Logs}}
+      <table class="table" style="font-size: 13px;">
+        <thead>
+          <tr>
+            <th>Tarih</th>
+            <th>Kullanıcı</th>
+            <th>İşlem</th>
+            <th>Durum (Süre)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Logs}}
+          <tr>
+            <td style="color: var(--text-secondary);">{{.Timestamp}}</td>
+            <td>{{.User}}</td>
+            <td><span class="badge" style="background: var(--bg-color);">{{.Action}}</span></td>
+            <td>
+              {{if .IsSuccess}}
+                <span style="color: var(--success-color); font-weight: 500;">{{.Status}}</span>
+              {{else}}
+                <span style="color: var(--error-color); font-weight: 500;">{{.Status}}</span>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Henüz bu makine için bir işlem geçmişi bulunmuyor.</p>
       {{end}}
     </div>
   </div>
@@ -408,158 +446,11 @@
         <span style="color: #DC2626; font-weight: 600;">ÖNEMLİ:</span> Bu işlem <span id="rollback-target-date-2" style="font-weight: 600;"></span> tarihinden sonraki tüm değişiklikleri geri alacak. Emin misiniz?
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
-        <button class="btn btn-secondary" onclick="triggerCloseRollback()">İptal</button>
-        <button class="btn btn-danger" id="confirm-rollback-btn" onclick="executeRollback()">Evet, Geri Dön</button>
+        <button class="btn btn-secondary" data-action="close-rollback">İptal</button>
+        <button class="btn btn-danger" id="confirm-rollback-btn" data-action="execute-rollback">Evet, Geri Dön</button>
       </div>
     </div>
   </div>
+</div>
 
-  <script>
-    // Tab Switching
-    function switchDetailTab(btn, tabId) {
-      const container = btn.closest('.vm-detail-inner');
-      container.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      container.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
-      
-      btn.classList.add('active');
-      container.querySelector('#' + tabId).classList.add('active');
-      
-      // Close any open popovers when switching tabs
-      closeAllPopovers();
-    }
-
-    // Popover Management
-    function toggleTimelinePopover(event, popoverId) {
-      event.stopPropagation();
-      const popover = document.getElementById(popoverId);
-      const isAlreadyShow = popover.classList.contains('show');
-      
-      closeAllPopovers();
-      
-      if (!isAlreadyShow) {
-        popover.classList.add('show');
-      }
-    }
-    
-    function closeTimelinePopover(event, popoverId) {
-      event.stopPropagation();
-      const popover = document.getElementById(popoverId);
-      if (popover) popover.classList.remove('show');
-    }
-
-    function closeAllPopovers() {
-      document.querySelectorAll('.timeline-popover').forEach(el => {
-        el.classList.remove('show');
-      });
-    }
-
-    // Close popovers on click outside
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.timeline-point-container')) {
-        closeAllPopovers();
-      }
-    });
-
-    // Create Manual Snapshot
-    function triggerManualSnapshot(vmName) {
-      const overlay = document.getElementById('snapshot-loading');
-      const text = document.getElementById('snapshot-loading-text');
-      
-      text.innerText = "Yedek alınıyor, lütfen bekleyin...";
-      overlay.classList.add('show');
-      closeAllPopovers();
-
-      fetch('/api/snapshots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vm: vmName })
-      })
-      .then(resp => {
-        if (!resp.ok) {
-          return resp.text().then(txt => { throw new Error(txt); });
-        }
-        return resp.json();
-      })
-      .then(data => {
-        // Success: reload the details view modal
-        refreshVMDetail(vmName);
-      })
-      .catch(err => {
-        overlay.classList.remove('show');
-        alert("Yedek alınamadı: " + err.message);
-      });
-    }
-
-    // Rollback confirmation
-    targetSnapshotId = null;
-    currentVMName = '{{.Name}}';
-    isVMRunning = '{{.Status}}' === 'running';
-
-    function triggerOpenRollback(snapId, dateStr) {
-      targetSnapshotId = snapId;
-      document.getElementById('rollback-target-date').innerText = dateStr;
-      document.getElementById('rollback-target-date-2').innerText = dateStr;
-      document.getElementById('rollback-confirm-modal').classList.add('show');
-      closeAllPopovers();
-    }
-
-    function triggerCloseRollback() {
-      targetSnapshotId = null;
-      document.getElementById('rollback-confirm-modal').classList.remove('show');
-    }
-
-    function executeRollback() {
-      if (!targetSnapshotId) return;
-
-      const modal = document.getElementById('rollback-confirm-modal');
-      modal.classList.remove('show');
-
-      const overlay = document.getElementById('snapshot-loading');
-      const text = document.getElementById('snapshot-loading-text');
-
-      if (isVMRunning) {
-        text.innerText = "Geri dönülüyor, VM yeniden başlatılacak...";
-      } else {
-        text.innerText = "Geri dönülüyor, lütfen bekleyin...";
-      }
-      overlay.classList.add('show');
-
-      fetch(`/api/snapshots/${targetSnapshotId}/rollback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: true })
-      })
-      .then(resp => {
-        if (!resp.ok) {
-          return resp.text().then(txt => { throw new Error(txt); });
-        }
-        return resp.json();
-      })
-      .then(data => {
-        alert("Sistem başarıyla geri yüklendi: " + data.message);
-        // Reload detail view to update snapshot list
-        refreshVMDetail(currentVMName);
-        
-        // Also refresh dashboard background
-        if (typeof htmx !== 'undefined') {
-          htmx.trigger('#dashboard-content', 'load');
-        }
-      })
-      .catch(err => {
-        overlay.classList.remove('show');
-        alert("Geri yükleme başarısız oldu: " + err.message);
-      });
-    }
-
-    function refreshVMDetail(vmName) {
-      fetch(`/api/vms/${vmName}/detail`)
-        .then(r => r.text())
-        .then(html => {
-          document.getElementById('vm-detail-modal-body').innerHTML = html;
-        })
-        .catch(err => {
-          document.getElementById('vm-detail-modal-body').innerText = 'Yenilenirken hata oluştu: ' + err;
-        });
-    }
-  </script>
 </div>
