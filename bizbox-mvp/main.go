@@ -10,14 +10,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
-	incus "github.com/lxc/incus/client"
-	"github.com/lxc/incus/shared/api"
+	incus "github.com/lxc/incus/v7/client"
+	"github.com/lxc/incus/v7/shared/api"
 )
 
 //go:embed templates/* static/*
@@ -1523,4 +1524,12 @@ func handleUpdateVMHardware(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`<div class="alert-success" style="padding: 10px; background-color: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; border-radius: 4px; margin-bottom: 15px;">Donanım başarıyla güncellendi.</div>`))
+}
+
+
+// GetIncusClient returns a connected Incus client
+func GetIncusClient() incus.InstanceServer {
+	socketPath := "/var/lib/incus/unix.socket"
+	c, _ := incus.ConnectIncusUnix(socketPath, nil)
+	return c
 }

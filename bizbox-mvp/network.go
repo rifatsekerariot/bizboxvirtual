@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,8 +9,8 @@ import (
 	"os/exec"
 	"strings"
 
-	incus "github.com/lxc/incus/client"
-	"github.com/lxc/incus/shared/api"
+	incus "github.com/lxc/incus/v7/client"
+	"github.com/lxc/incus/v7/shared/api"
 )
 
 // Segment represents a network segment metadata (Portgroup) and its assigned VMs
@@ -156,7 +157,7 @@ func CreateSegment(name string, vlanID int, vswitchName string) error {
 		return fmt.Errorf("veritabanına segment eklenirken hata: %w", err)
 	}
 
-	return createOVSSegment(name, vlanID) // Might need to update createOVSSegment if vswitch logic is needed there
+	return createOVSSegment(name, vlanID, vswitchName) // Might need to update createOVSSegment if vswitch logic is needed there
 }
 
 // AssignVMToSegment links a VM to a segment in the database and applies VLAN tagging on the OVS port

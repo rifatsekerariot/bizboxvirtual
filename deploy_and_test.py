@@ -26,26 +26,27 @@ try:
     ssh.connect(host, username=user, password=password)
     
     commands = [
-        f"sudo apt-get install -y build-essential",
+        f"echo {password} | sudo -S apt-get install -y build-essential",
+        f"rm -rf {remote_dir}",
         f"mkdir -p {remote_dir}",
         f"tar -xzf {remote_tar} -C {remote_dir}",
+        f"echo {password} | sudo -S date -s \"$(curl -s --head http://google.com | grep ^Date: | sed 's/Date: //g' | tr -d '\\r')\"",
+        f"cd {remote_dir} && export PATH=$PATH:/usr/local/go/bin && go mod tidy",
         f"cd {remote_dir} && export PATH=$PATH:/usr/local/go/bin && CGO_ENABLED=1 go build -o bizbox-mvp .",
-        f"cd {remote_dir} && sudo date -s \"$(curl -s --head http://google.com | grep ^Date: | sed 's/Date: //g' | tr -d '\\r')\" && sed -i 's/\\r$//' install.sh && sudo bash ./install.sh"
+        f"cd {remote_dir} && sed -i 's/\\r$//' install.sh && echo {password} | sudo -S bash ./install.sh"
     ]
     
     for cmd in commands:
         print(f"Executing: {cmd}")
-        stdin, stdout, stderr = ssh.exec_command(cmd)
+        stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
         
-        # Wait for command to finish and print output
+        # Read output before waiting for exit status to prevent deadlock
+        out = stdout.read().decode('utf-8', errors='replace').strip()
+        
         exit_status = stdout.channel.recv_exit_status()
-        out = stdout.read().decode('utf-8').strip()
-        err = stderr.read().decode('utf-8').strip()
         
         if out:
-            print(f"STDOUT: {out}")
-        if err:
-            print(f"STDERR: {err}")
+            print(f"OUTPUT: {out}")
             
         if exit_status != 0:
             print(f"Command failed with exit status {exit_status}")

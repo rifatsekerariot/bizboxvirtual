@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+
+	incus "github.com/lxc/incus/v7/client"
+	"github.com/lxc/incus/v7/shared/api"
 )
 
 // RawDisk represents an unmounted, raw block device on the host
@@ -67,9 +70,10 @@ func ListRawDisks() ([]RawDisk, error) {
 
 // CreateDatastore formats a disk as a ZFS pool and adds it to Incus via API
 func CreateDatastore(poolName, diskName string) error {
-	c := GetIncusClient()
-	if c == nil {
-		return fmt.Errorf("Incus client error")
+	socketPath := "/var/lib/incus/unix.socket"
+	c, err := incus.ConnectIncusUnix(socketPath, nil)
+	if err != nil {
+		return fmt.Errorf("Incus client error: %v", err)
 	}
 
 	diskPath := fmt.Sprintf("/dev/%s", diskName)
@@ -88,7 +92,7 @@ func CreateDatastore(poolName, diskName string) error {
 		Name:   poolName,
 	}
 
-	err := c.CreateStoragePool(req)
+	err = c.CreateStoragePool(req)
 	if err != nil {
 		return fmt.Errorf("Incus storage pool oluşturulamadı: %w", err)
 	}
@@ -156,9 +160,10 @@ func handleCreateDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 
 // ListDatastores returns all storage pools from Incus, filtering out system default pool
 func ListDatastores() ([]api.StoragePool, error) {
-	c := GetIncusClient()
-	if c == nil {
-		return nil, fmt.Errorf("Incus client connection failed")
+	socketPath := "/var/lib/incus/unix.socket"
+	c, err := incus.ConnectIncusUnix(socketPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Incus client error: %v", err)
 	}
 
 	allPools, err := c.GetStoragePools()
