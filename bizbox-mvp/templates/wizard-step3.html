@@ -17,12 +17,14 @@
 
   <div id="bridged-options" style="margin-bottom: 20px;">
     <div class="form-group">
-      <label for="network-bridge">Köprü Arabirimi (Bridge)</label>
+      <label for="network-bridge">Köprü Arabirimi (vSwitch)</label>
       <select id="network-bridge" name="network_bridge" class="form-control" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
-        <option value="br-int">br-int (OVS Segmentasyon)</option>
+        {{range .VSwitches}}
+        <option value="{{.}}">{{.}}</option>
+        {{end}}
         <option value="incusbr0">incusbr0 (Varsayılan Incus Köprüsü)</option>
       </select>
-      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin bağlanacağı sanal anahtarı seçin. OVS kullanımı için br-int seçilidir.</small>
+      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin bağlanacağı sanal anahtarı seçin.</small>
     </div>
 
     <div class="form-group" style="margin-top: 15px;">

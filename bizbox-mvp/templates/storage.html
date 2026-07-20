@@ -5,7 +5,53 @@
     </div>
 </div>
 
-<div class="content-card fade-in" style="animation-delay: 0.1s;">
+<div class="content-card fade-in" style="animation-delay: 0.1s; margin-bottom: 24px;">
+    <h3>Mevcut Datastore'lar (ZFS Havuzları)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+        Sistemde oluşturulmuş ve Incus'a bağlanmış olan depolama havuzları (Datastores). 
+        'default' havuzu sistem için gereklidir ve silinemez.
+    </p>
+
+    {{if .Pools}}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Havuz Adı</th>
+                <th>Sürücü (Driver)</th>
+                <th>Durum</th>
+                <th>Kullanım</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Pools}}
+            <tr>
+                <td style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">{{.Name}}</td>
+                <td><span class="badge">{{.Driver}}</span></td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="status-dot {{if eq .Status "Created"}}status-running{{else}}status-stopped{{end}}"></span>
+                        {{.Status}}
+                    </div>
+                </td>
+                <td>{{len .UsedBy}} instance</td>
+                <td>
+                    {{if eq .Name "default"}}
+                        <button class="btn btn-secondary btn-sm" disabled title="Varsayılan havuz silinemez">Silinemez</button>
+                    {{else}}
+                        <button class="btn btn-danger btn-sm" onclick="deleteDatastore('{{.Name}}')">Sil</button>
+                    {{end}}
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p style="font-size: 13px; color: var(--text-secondary);">Henüz oluşturulmuş bir Datastore bulunmuyor.</p>
+    {{end}}
+</div>
+
+<div class="content-card fade-in" style="animation-delay: 0.2s;">
     <h3>Bağlı Olmayan Diskler</h3>
     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
         Sisteminizde bulunan ancak herhangi bir dosya sistemine bağlı olmayan diskler aşağıda listelenmiştir. 
@@ -104,7 +150,7 @@
         document.getElementById('datastore-actions').style.display = 'none';
         document.getElementById('datastore-loading').style.display = 'flex';
 
-        fetch('/api/storage/create', {
+        fetch('/api/storage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ pool_name: poolName, disk_name: currentDisk })
@@ -127,6 +173,28 @@
             document.getElementById('datastore-actions').style.display = 'flex';
             document.getElementById('datastore-loading').style.display = 'none';
             alert("Hata: " + err.message);
+        });
+    }
+
+    window.deleteDatastore = function(poolName) {
+        if (!confirm("DİKKAT: '" + poolName + "' adlı datastore'u kalıcı olarak silmek istediğinize emin misiniz? Bu işlem disk üzerindeki ZFS havuzunu ve tüm verileri yok edecektir!")) {
+            return;
+        }
+
+        fetch('/api/storage/' + poolName, {
+            method: 'DELETE'
+        })
+        .then(resp => {
+            if (!resp.ok) {
+                return resp.text().then(txt => { throw new Error(txt); });
+            }
+            alert(poolName + " başarıyla silindi ve disk temizlendi.");
+            if (typeof htmx !== 'undefined') {
+                htmx.trigger('#dashboard-content', 'load');
+            }
+        })
+        .catch(err => {
+            alert("Silme hatası: " + err.message);
         });
     }
 </script>

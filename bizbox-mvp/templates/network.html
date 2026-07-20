@@ -261,27 +261,14 @@
   <div id="tab-uplinks" class="tab-panel" style="display: none;">
     <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
       <div>
-        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Dış Bağlantı Yönetimi</h2>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Fiziksel ağ arayüzlerini ve dış köprü (bridge) ayarlarını yönetin</p>
+        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Dış Bağlantı ve Sanal Anahtar Yönetimi (Uplinks)</h2>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Fiziksel ağ arayüzlerini ve ESXi mantığındaki sanal anahtarları (vSwitch) yönetin</p>
       </div>
+      <button class="btn btn-primary" onclick="createVSwitch()">Yeni vSwitch Oluştur</button>
     </div>
     
-    <div class="table-responsive">
-      <table class="vm-table">
-        <thead>
-          <tr>
-            <th>Arayüz Adı</th>
-            <th>Durum</th>
-            <th>IP Adresi</th>
-            <th style="width: 200px;">İşlemler</th>
-          </tr>
-        </thead>
-        <tbody id="uplinks-table-body">
-          <tr>
-            <td colspan="4" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</td>
-          </tr>
-        </tbody>
-      </table>
+    <div id="uplinks-content-area">
+      <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</div>
     </div>
   </div>
 
@@ -318,63 +305,172 @@
     })();
 
     window.loadUplinks = function() {
-      const tbody = document.getElementById('uplinks-table-body');
-      if (!tbody) return;
+      const container = document.getElementById('uplinks-content-area');
+      if (!container) return;
       
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</td></tr>';
+      container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Yükleniyor...</div>';
       
       fetch('/api/network/uplinks')
         .then(res => res.json())
         .then(data => {
-          if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 20px;">Dış bağlantı bulunamadı.</td></tr>';
-            return;
+          let html = `
+            <div style="margin-bottom: 32px;">
+              <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Sanal Anahtarlar (vSwitches)</h3>
+              <div class="table-responsive">
+                <table class="vm-table">
+                  <thead>
+                    <tr>
+                      <th>vSwitch Adı</th>
+                      <th>Bağlı Fiziksel Portlar (Uplinks)</th>
+                      <th>İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+          `;
+          
+          if (data.vswitches && data.vswitches.length > 0) {
+            data.vswitches.forEach(vsw => {
+              let ports = vsw.interfaces && vsw.interfaces.length > 0 ? vsw.interfaces.join(', ') : '<span style="color:var(--text-secondary); font-style:italic;">Port yok</span>';
+              let badge = vsw.is_default ? '<span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); font-size: 10px; margin-left: 8px;">Varsayılan (İç Ağ)</span>' : '';
+              let delBtn = vsw.is_default ? '<button class="btn btn-secondary btn-sm" disabled>Silinemez</button>' : `<button class="btn btn-danger btn-sm" onclick="deleteVSwitch('${vsw.name}')">Sil</button>`;
+              
+              html += `
+                <tr>
+                  <td class="font-bold font-mono">${vsw.name} ${badge}</td>
+                  <td class="font-mono">${ports}</td>
+                  <td>${delBtn}</td>
+                </tr>
+              `;
+            });
+          } else {
+            html += '<tr><td colspan="3" style="text-align: center; color: var(--text-secondary); font-style: italic;">vSwitch bulunamadı.</td></tr>';
           }
           
-          let html = '';
-          data.forEach(up => {
-            let statusBadge = up.Status === 'up' 
-              ? '<span class="badge" style="background-color: rgba(22, 163, 74, 0.1); color: var(--success-color);">Aktif</span>'
-              : '<span class="badge" style="background-color: rgba(220, 38, 38, 0.1); color: var(--danger-color);">Pasif</span>';
+          html += `
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <div>
+              <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Fiziksel Arayüzler (Fiziksel Portlar)</h3>
+              <div class="table-responsive">
+                <table class="vm-table">
+                  <thead>
+                    <tr>
+                      <th>Arayüz Adı</th>
+                      <th>Durum</th>
+                      <th>MAC Adresi</th>
+                      <th>Bağlı Olduğu vSwitch</th>
+                      <th style="width: 250px;">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+          `;
+          
+          if (data.uplinks && data.uplinks.length > 0) {
+            data.uplinks.forEach(up => {
+              let statusBadge = up.is_up 
+                ? '<span class="badge" style="background-color: rgba(22, 163, 74, 0.1); color: var(--success-color);">Aktif</span>'
+                : '<span class="badge" style="background-color: rgba(220, 38, 38, 0.1); color: var(--danger-color);">Pasif</span>';
+                
+              let vswSelectOptions = '<option value="">-- Boşta Bırak --</option>';
+              data.vswitches.forEach(vsw => {
+                let selected = (up.vswitch === vsw.name) ? 'selected' : '';
+                vswSelectOptions += `<option value="${vsw.name}" ${selected}>${vsw.name}</option>`;
+              });
               
-            let attachBtn = up.Attached 
-              ? `<button class="btn btn-secondary" onclick="detachUplink('${up.Name}')" style="color: var(--danger-color); border-color: var(--danger-color);">Bağlantıyı Kes</button>`
-              : `<button class="btn btn-primary" onclick="attachUplink('${up.Name}')">Köprüye Ekle</button>`;
+              let attachHtml = `
+                <div style="display: flex; gap: 8px;">
+                  <select id="vsw-select-${up.name}" class="form-control" style="padding: 4px 8px; border-radius: 4px;">
+                    ${vswSelectOptions}
+                  </select>
+                  <button class="btn btn-primary btn-sm" onclick="applyUplink('${up.name}', '${up.vswitch}')">Uygula</button>
+                </div>
+              `;
               
-            html += `
-              <tr>
-                <td class="font-bold font-mono">${up.Name}</td>
-                <td>${statusBadge}</td>
-                <td class="font-mono">${up.IPs && up.IPs.length > 0 ? up.IPs.join('<br>') : '<span style="color:var(--text-secondary)">IP Yok</span>'}</td>
-                <td>${attachBtn}</td>
-              </tr>
-            `;
-          });
-          tbody.innerHTML = html;
+              html += `
+                <tr>
+                  <td class="font-bold font-mono">${up.name}</td>
+                  <td>${statusBadge}</td>
+                  <td class="font-mono">${up.mac_address}</td>
+                  <td class="font-mono">${up.vswitch || '<span style="color:var(--text-secondary); font-style:italic;">Boşta</span>'}</td>
+                  <td>${attachHtml}</td>
+                </tr>
+              `;
+            });
+          } else {
+            html += '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary); font-style: italic;">Fiziksel bağlantı bulunamadı.</td></tr>';
+          }
+          
+          html += `
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+          
+          container.innerHTML = html;
         })
         .catch(err => {
-          tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--danger-color); padding: 20px;">Hata: ${err.message}</td></tr>`;
+          container.innerHTML = `<div style="text-align: center; color: var(--danger-color); padding: 20px;">Hata: ${err.message}</div>`;
         });
     };
 
-    window.attachUplink = function(iface) {
-      if (!confirm(`'${iface}' arayüzünü dış köprüye (br-ex) eklemek istediğinize emin misiniz?`)) return;
-      fetch(`/api/network/uplinks/${iface}/attach`, { method: 'POST' })
-        .then(res => {
-          if (!res.ok) throw new Error("İşlem başarısız");
-          window.loadUplinks();
-        })
-        .catch(err => alert(err.message));
+    window.createVSwitch = function() {
+      const name = prompt("Yeni vSwitch adını girin (Örn: vSwitch1, br-ext):");
+      if (!name) return;
+      
+      fetch('/api/network/vswitches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ name: name })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Oluşturulamadı");
+        window.loadUplinks();
+      })
+      .catch(err => alert("Hata: " + err.message));
     };
 
-    window.detachUplink = function(iface) {
-      if (!confirm(`'${iface}' arayüzünü dış köprüden çıkarmak istediğinize emin misiniz?`)) return;
-      fetch(`/api/network/uplinks/${iface}/detach`, { method: 'POST' })
+    window.deleteVSwitch = function(name) {
+      if (!confirm(`'${name}' sanal anahtarını silmek istediğinize emin misiniz?`)) return;
+      fetch(`/api/network/vswitches/${name}`, { method: 'DELETE' })
         .then(res => {
-          if (!res.ok) throw new Error("İşlem başarısız");
+          if (!res.ok) throw new Error("Silinemedi");
           window.loadUplinks();
         })
-        .catch(err => alert(err.message));
+        .catch(err => alert("Hata: " + err.message));
+    };
+
+    window.applyUplink = function(iface, currentVsw) {
+      const select = document.getElementById(`vsw-select-${iface}`);
+      const targetVsw = select.value;
+      
+      if (targetVsw === currentVsw) {
+         return; // No change
+      }
+      
+      let p;
+      if (targetVsw === "") {
+        // Detach
+        if (!confirm(`'${iface}' arayüzünü ${currentVsw} köprüsünden çıkarmak istediğinize emin misiniz? (ÖNEMLİ: Yönetim portunuzu keserseniz erişiminiz kopar!)`)) return;
+        p = fetch(`/api/network/uplinks/${iface}/detach`, { method: 'POST' });
+      } else {
+        // Attach
+        if (!confirm(`'${iface}' arayüzünü '${targetVsw}' köprüsüne eklemek istediğinize emin misiniz? (ÖNEMLİ: Eğer bu port sunucunun tek yönetim adresi ise IP'si gidebilir!)`)) return;
+        p = fetch(`/api/network/uplinks/${iface}/attach`, { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ vswitch: targetVsw })
+        });
+      }
+      
+      p.then(res => {
+        if (!res.ok) return res.text().then(t => { throw new Error(t); });
+        window.loadUplinks();
+      })
+      .catch(err => alert("Hata: " + err.message));
     };
   </script>
 </div>

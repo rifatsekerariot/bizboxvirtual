@@ -841,18 +841,34 @@ func handleWizardStep2(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWizardStep3(w http.ResponseWriter, r *http.Request) {
+	// Fetch vswitches
+	brOut, _ := exec.Command("ovs-vsctl", "list-br").Output()
+	bridgesRaw := strings.Split(strings.TrimSpace(string(brOut)), "\n")
+	var bridges []string
+	for _, br := range bridgesRaw {
+		br = strings.TrimSpace(br)
+		if br != "" {
+			bridges = append(bridges, br)
+		}
+	}
+	if len(bridges) == 0 {
+		bridges = []string{"br-int"}
+	}
+
 	data := struct {
 		Name         string
 		Image        string
 		InstanceType string
 		CPU          string
 		RAM          string
+		VSwitches    []string
 	}{
 		Name:         r.FormValue("name"),
 		Image:        r.FormValue("image"),
 		InstanceType: r.FormValue("instance_type"),
 		CPU:          r.FormValue("cpu"),
 		RAM:          r.FormValue("ram"),
+		VSwitches:    bridges,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1163,13 +1179,17 @@ func main() {
 		mux.HandleFunc("GET /api/updates/status", handleGetUpdateStatus)
 		mux.HandleFunc("POST /api/updates/reset", handleResetUpdate)
 
+		// Uplinks and vSwitches
 		mux.HandleFunc("GET /api/network/uplinks", handleGetUplinks)
+		mux.HandleFunc("POST /api/network/vswitches", handleCreateVSwitch)
+		mux.HandleFunc("DELETE /api/network/vswitches/{name}", handleDeleteVSwitch)
 		mux.HandleFunc("POST /api/network/uplinks/{iface}/attach", handleAttachUplink)
 		mux.HandleFunc("POST /api/network/uplinks/{iface}/detach", handleDetachUplink)
 
 		// Storage endpoints
 		mux.HandleFunc("GET /api/storage", handleGetStoragePage)
-		mux.HandleFunc("POST /api/storage/create", handleCreateDatastoreAPI)
+		mux.HandleFunc("POST /api/storage", handleCreateDatastoreAPI)
+		mux.HandleFunc("DELETE /api/storage/{pool}", handleDeleteDatastoreAPI)
 
 
 		fmt.Println("REST API sunucusu 0.0.0.0:8080 adresinde başlatılıyor...")
