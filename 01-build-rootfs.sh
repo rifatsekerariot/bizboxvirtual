@@ -65,6 +65,10 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
   set -e
   export DEBIAN_FRONTEND=noninteractive
   
+  # Install curl and ca-certificates first to fetch the repo key
+  apt-get update -qq
+  apt-get install -y --no-install-recommends curl ca-certificates
+
   # Add Zabbly repository for Incus
   mkdir -p /etc/apt/keyrings/
   curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
