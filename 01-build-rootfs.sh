@@ -200,15 +200,15 @@ chroot "$ROOTFS_DIR" ln -s ../run/systemd/resolve/stub-resolv.conf /etc/resolv.c
 cat > "$ROOTFS_DIR/etc/systemd/system/incus-init.service" <<'SYS'
 [Unit]
 Description=Initialize Incus default profile and pool
-After=incus.service
-Requires=incus.service
+After=incus.service openvswitch-switch.service
+Requires=incus.service openvswitch-switch.service
 Before=bizbox-mvp.service
 ConditionPathExists=!/var/lib/bizbox_incus_initialized
 ConditionKernelCommandLine=!boot=casper
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c "incus admin init --auto && incus profile device add default root disk path=/ pool=default && touch /var/lib/bizbox_incus_initialized"
+ExecStart=/bin/bash -c "ovs-vsctl add-br br-int || true && incus admin init --auto && incus profile device add default root disk path=/ pool=default && touch /var/lib/bizbox_incus_initialized"
 RemainAfterExit=yes
 
 [Install]
