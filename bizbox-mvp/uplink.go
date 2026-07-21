@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -17,16 +19,38 @@ type VSwitchInfo struct {
 }
 
 type UplinkInfo struct {
-	Name       string `json:"name"`
-	IsUp       bool   `json:"is_up"`
-	MacAddress string `json:"mac_address"`
-	VSwitch    string `json:"vswitch"`
+	Name         string `json:"name"`
+	IsUp         bool   `json:"is_up"`
+	MacAddress   string `json:"mac_address"`
+	VSwitch      string `json:"vswitch"`
+	IsManagement bool   `json:"is_management"`
 }
 
 type NetworkUplinkResponse struct {
 	VSwitches []VSwitchInfo `json:"vswitches"`
 	Uplinks   []UplinkInfo  `json:"uplinks"`
 	Segments  []Segment     `json:"segments"`
+}
+
+func getDefaultRouteInterface() string {
+	file, err := os.Open("/proc/net/route")
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			// Destination is the second column (00000000 for default route)
+			if fields[1] == "00000000" {
+				return fields[0] // Interface name
+			}
+		}
+	}
+	return ""
 }
 
 func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +67,8 @@ func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mgmtIface := getDefaultRouteInterface()
+
 	validPhysicalLinks := make(map[string]bool)
 	var uplinks []UplinkInfo
 	for _, iface := range ifaces {
@@ -58,10 +84,11 @@ func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
 		isUp := (iface.Flags & net.FlagUp) != 0
 
 		uplinks = append(uplinks, UplinkInfo{
-			Name:       name,
-			IsUp:       isUp,
-			MacAddress: iface.HardwareAddr.String(),
-			VSwitch:    "",
+			Name:         name,
+			IsUp:         isUp,
+			MacAddress:   iface.HardwareAddr.String(),
+			VSwitch:      "",
+			IsManagement: name == mgmtIface,
 		})
 	}
 
@@ -217,6 +244,12 @@ func handleAttachUplink(w http.ResponseWriter, r *http.Request) {
 	vswitch := r.FormValue("vswitch")
 	if iface == "" || vswitch == "" {
 		http.Error(w, "Arayüz veya vSwitch adı eksik", http.StatusBadRequest)
+		return
+	}
+
+	// Prevent attaching the active management interface
+	if iface == getDefaultRouteInterface() {
+		http.Error(w, "Yönetim arayüzü ("+iface+") bir sanal anahtara doğrudan bağlanamaz. Bu işlem sunucu erişimini kesecektir!", http.StatusBadRequest)
 		return
 	}
 

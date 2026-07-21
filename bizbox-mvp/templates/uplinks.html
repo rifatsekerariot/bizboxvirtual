@@ -122,7 +122,11 @@
             <option value="">-- Arayüz Seçin --</option>
             {{range .Uplinks}}
               {{if eq .VSwitch ""}}
-                <option value="{{.Name}}">{{.Name}} ({{if .IsUp}}Aktif{{else}}Pasif{{end}})</option>
+                {{if .IsManagement}}
+                  <option value="{{.Name}}" disabled style="color: var(--text-secondary);">{{.Name}} (Yönetim Arayüzü - Seçilemez)</option>
+                {{else}}
+                  <option value="{{.Name}}">{{.Name}} ({{if .IsUp}}Aktif{{else}}Pasif{{end}})</option>
+                {{end}}
               {{end}}
             {{end}}
           </select>
