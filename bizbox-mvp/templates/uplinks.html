@@ -147,7 +147,7 @@
     function createVSwitch() {
       const name = prompt("Yeni sanal anahtar (vSwitch) adı girin:\n(Örn: vSwitch1)");
       if (name) {
-        fetch('/api/network/vswitch', {
+        fetch('/api/network/vswitches', {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: 'name=' + encodeURIComponent(name)
@@ -159,7 +159,7 @@
     }
     function deleteVSwitch(name) {
       if (confirm(`'${name}' sanal anahtarını silmek istediğinize emin misiniz?`)) {
-        fetch('/api/network/vswitch/' + name, {
+        fetch('/api/network/vswitches/' + name, {
           method: 'DELETE'
         }).then(res => {
           if(res.ok) htmx.trigger('body', 'uplinks-updated');

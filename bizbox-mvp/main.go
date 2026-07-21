@@ -1236,7 +1236,7 @@ func main() {
 		mux.HandleFunc("GET /api/network/uplinks", handleGetUplinks)
 		mux.HandleFunc("POST /api/network/vswitches", handleCreateVSwitch)
 		mux.HandleFunc("DELETE /api/network/vswitches/{name}", handleDeleteVSwitch)
-		mux.HandleFunc("POST /api/network/uplinks/{iface}/attach", handleAttachUplink)
+		mux.HandleFunc("POST /api/network/uplinks/attach", handleAttachUplink)
 		mux.HandleFunc("POST /api/network/uplinks/{iface}/detach", handleDetachUplink)
 
 		// Storage endpoints

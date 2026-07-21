@@ -51,19 +51,18 @@
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-secondary); margin-bottom: 16px; opacity: 0.5;">
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
     </svg>
-    <h3 style="font-size: 16px; color: var(--text-primary); margin-bottom: 8px;">Henüz Portgrup Oluşturulmamış</h3>
-    <p style="font-size: 14px; color: var(--text-secondary); max-width: 400px; margin: 0 auto 24px;">Sanal makinelerinizi bağlayabilmek için vSwitch ve VLAN tanımlarını içeren bir portgrup oluşturun.</p>
-    <button class="btn btn-primary" onclick="openSegmentModal()">İlk Portgrubu Oluştur</button>
+    <h3 style="font-size: 16px; color: var(--text-primary); margin-bottom: 8px;">Henüz Portgr    <p style="font-size: 14px; color: var(--text-secondary); max-width: 400px; margin: 0 auto 24px;">Sanal makinelerinizi bağlayabilmek için vSwitch and VLAN tanımlarını içeren bir portgrup oluşturun.</p>
+    <button class="btn btn-primary" onclick="openPortgroupModal()">İlk Portgrubu Oluştur</button>
   </div>
   {{end}}
 
 </div>
 
 <!-- Create Segment Modal -->
-<div class="modal-overlay" id="segmentModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+<div class="modal-overlay" id="portgroupModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
   <div class="modal" style="background-color: var(--card-bg); border-radius: var(--radius-card); padding: 32px; width: 100%; max-width: 450px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border: 1px solid var(--border-color);">
     <h3 style="margin-top: 0; margin-bottom: 24px; font-family: var(--font-ui); font-size: 18px; color: var(--text-primary);">Yeni Portgrup Oluştur</h3>
-    <form hx-post="/api/network/segments" hx-target="this" hx-swap="none" onsubmit="closeSegmentModal(); setTimeout(function(){ htmx.trigger('body', 'segments-updated'); }, 500);">
+    <form hx-post="/api/network/segments" hx-target="this" hx-swap="none" onsubmit="closePortgroupModal(); setTimeout(function(){ htmx.trigger('body', 'segments-updated'); }, 500);">
       <div class="form-group" style="margin-bottom: 20px;">
         <label for="name" style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">Portgrup Adı</label>
         <input type="text" id="name" name="name" class="form-control" required placeholder="Örn: Yonetim_Agi" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); background-color: var(--bg-color); color: var(--text-primary); font-family: var(--font-ui);">
@@ -83,7 +82,7 @@
       </div>
       
       <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
-        <button type="button" class="btn btn-secondary" onclick="closeSegmentModal()" style="padding: 10px 20px;">İptal</button>
+        <button type="button" class="btn btn-secondary" onclick="closePortgroupModal()" style="padding: 10px 20px;">İptal</button>
         <button type="submit" class="btn btn-primary" style="padding: 10px 20px;">Oluştur</button>
       </div>
     </form>
@@ -91,10 +90,10 @@
 </div>
 
 <script>
-  function openSegmentModal() {
-    document.getElementById('segmentModal').style.display = 'flex';
+  function openPortgroupModal() {
+    document.getElementById('portgroupModal').style.display = 'flex';
   }
-  function closeSegmentModal() {
-    document.getElementById('segmentModal').style.display = 'none';
+  function closePortgroupModal() {
+    document.getElementById('portgroupModal').style.display = 'none';
   }
 </script>
