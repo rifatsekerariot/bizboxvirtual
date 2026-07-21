@@ -77,20 +77,45 @@ func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// A standard Incus bridge can have external_interfaces defined in its config
-		extIfacesRaw := netObj.Config["bridge.external_interfaces"]
 		var attachedPhys []string
-		if extIfacesRaw != "" {
-			parts := strings.Split(extIfacesRaw, ",")
-			for _, p := range parts {
-				p = strings.TrimSpace(p)
-				if p != "" {
-					attachedPhys = append(attachedPhys, p)
-					// Mark the physical uplink as attached to this vswitch
-					for i := range uplinks {
-						if uplinks[i].Name == p {
-							uplinks[i].VSwitch = netObj.Name
-							break
+
+		// Check if it's an OVS bridge
+		cmdOvsCheck := exec.Command("ovs-vsctl", "br-exists", netObj.Name)
+		if errOvs := cmdOvsCheck.Run(); errOvs == nil {
+			// Get interfaces from OVS
+			cmdOvsList := exec.Command("ovs-vsctl", "list-ifaces", netObj.Name)
+			if out, errOvsList := cmdOvsList.Output(); errOvsList == nil {
+				lines := strings.Split(string(out), "\n")
+				for _, line := range lines {
+					p := strings.TrimSpace(line)
+					// Exclude internal ports (same name as bridge) and virtual VM ports
+					if p != "" && p != netObj.Name && !strings.HasPrefix(p, "veth") && !strings.HasPrefix(p, "tap") {
+						attachedPhys = append(attachedPhys, p)
+						// Mark the physical uplink as attached to this vswitch
+						for i := range uplinks {
+							if uplinks[i].Name == p {
+								uplinks[i].VSwitch = netObj.Name
+								break
+							}
+						}
+					}
+				}
+			}
+		} else {
+			// A standard Incus bridge can have external_interfaces defined in its config
+			extIfacesRaw := netObj.Config["bridge.external_interfaces"]
+			if extIfacesRaw != "" {
+				parts := strings.Split(extIfacesRaw, ",")
+				for _, p := range parts {
+					p = strings.TrimSpace(p)
+					if p != "" {
+						attachedPhys = append(attachedPhys, p)
+						// Mark the physical uplink as attached to this vswitch
+						for i := range uplinks {
+							if uplinks[i].Name == p {
+								uplinks[i].VSwitch = netObj.Name
+								break
+							}
 						}
 					}
 				}
@@ -167,6 +192,13 @@ func handleDeleteVSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If it exists in OVS, delete it via OVS first
+	cmdCheck := exec.Command("ovs-vsctl", "br-exists", name)
+	if errOvs := cmdCheck.Run(); errOvs == nil {
+		cmdDel := exec.Command("ovs-vsctl", "del-br", name)
+		_ = cmdDel.Run()
+	}
+
 	err := c.DeleteNetwork(name)
 	if err != nil {
 		LogSystemEvent(getUsername(r), "vSwitch Silme", name, "Başarısız: "+err.Error())
@@ -187,6 +219,22 @@ func handleAttachUplink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Check if the bridge exists in OVS
+	cmdCheck := exec.Command("ovs-vsctl", "br-exists", vswitch)
+	if errOvs := cmdCheck.Run(); errOvs == nil {
+		// It is an OVS bridge, attach via OVS add-port
+		cmdAttach := exec.Command("ovs-vsctl", "add-port", vswitch, iface)
+		if out, errAttach := cmdAttach.CombinedOutput(); errAttach != nil {
+			LogSystemEvent(getUsername(r), "Uplink Ekleme", fmt.Sprintf("%s -> %s (OVS)", iface, vswitch), "Başarısız: "+errAttach.Error())
+			http.Error(w, "Failed to attach interface via OVS: "+string(out), http.StatusInternalServerError)
+			return
+		}
+		LogSystemEvent(getUsername(r), "Uplink Ekleme", fmt.Sprintf("%s -> %s (OVS)", iface, vswitch), "Başarılı")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// 2. Fallback to standard Incus managed bridge
 	c := GetIncusClient()
 	if c == nil {
 		http.Error(w, "Incus client error", http.StatusInternalServerError)
@@ -234,6 +282,22 @@ func handleDetachUplink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Check if the port is attached to an OVS bridge
+	cmdCheck := exec.Command("ovs-vsctl", "port-to-br", iface)
+	if out, errOvs := cmdCheck.CombinedOutput(); errOvs == nil {
+		// It is an OVS port! Delete it from OVS directly
+		cmdDetach := exec.Command("ovs-vsctl", "del-port", iface)
+		if errDetach := cmdDetach.Run(); errDetach != nil {
+			LogSystemEvent(getUsername(r), "Uplink Çıkarma", iface+" (OVS)", "Başarısız: "+errDetach.Error())
+			http.Error(w, "Failed to detach interface via OVS: "+string(out), http.StatusInternalServerError)
+			return
+		}
+		LogSystemEvent(getUsername(r), "Uplink Çıkarma", iface+" (OVS)", "Başarılı")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// 2. Fallback to Incus client for standard bridges
 	c := GetIncusClient()
 	if c == nil {
 		http.Error(w, "Incus client error", http.StatusInternalServerError)
