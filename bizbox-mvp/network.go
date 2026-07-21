@@ -163,9 +163,13 @@ func CreateSegment(name string, vlanID int, vswitchName string) error {
 // AssignVMToSegment links a VM to a segment in the database and applies VLAN tagging on the OVS port
 func AssignVMToSegment(vmName string, segmentName string) error {
 	var vlanID int
-	err := db.QueryRow("SELECT vlan_id FROM network_segments WHERE name = ?", segmentName).Scan(&vlanID)
+	var vswitchName string
+	err := db.QueryRow("SELECT vlan_id, vswitch_name FROM network_segments WHERE name = ?", segmentName).Scan(&vlanID, &vswitchName)
 	if err != nil {
 		return fmt.Errorf("hedef segment bulunamadı: %w", err)
+	}
+	if vswitchName == "" {
+		vswitchName = "br-int"
 	}
 
 	_, err = db.Exec(`
@@ -180,13 +184,13 @@ func AssignVMToSegment(vmName string, segmentName string) error {
 	// Apply inherited QoS settings of the segment to this VM (or VM's direct rule if any)
 	_ = ApplyQoSForVM(vmName)
 
-	// OVS VLAN Tagging via Incus Native configuration
-	// incus config device set <vmName> eth0 vlan=<vlanID>
-	cmd := exec.Command("incus", "config", "device", "set", vmName, "eth0", fmt.Sprintf("vlan=%d", vlanID))
+	// OVS VLAN Tagging and Parent Switch Update via Incus Native configuration
+	// incus config device set <vmName> eth0 parent=<vswitchName> vlan=<vlanID>
+	cmd := exec.Command("incus", "config", "device", "set", vmName, "eth0", "parent", vswitchName, "vlan", fmt.Sprintf("%d", vlanID))
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("Port tagging komutu çalıştırılamadı: '%s' (VLAN: %d) - Hata: %w. Detay: %s", vmName, vlanID, err, string(out))
+		return fmt.Errorf("Port ve vSwitch güncelleme komutu çalıştırılamadı: '%s' (vSwitch: %s, VLAN: %d) - Hata: %w. Detay: %s", vmName, vswitchName, vlanID, err, string(out))
 	}
-	log.Printf("[OVS] '%s' cihazı başarıyla VLAN %d (Segment: %s) ile etiketlendi.", vmName, vlanID, segmentName)
+	log.Printf("[OVS] '%s' cihazı başarıyla %s köprüsüne VLAN %d (Segment: %s) ile bağlandı.", vmName, vswitchName, vlanID, segmentName)
 	return nil
 }
 
