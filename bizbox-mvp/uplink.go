@@ -25,6 +25,7 @@ type UplinkInfo struct {
 type NetworkUplinkResponse struct {
 	VSwitches []VSwitchInfo `json:"vswitches"`
 	Uplinks   []UplinkInfo  `json:"uplinks"`
+	Segments  []Segment     `json:"segments"`
 }
 
 func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +107,7 @@ func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
 	response := NetworkUplinkResponse{
 		VSwitches: vswitches,
 		Uplinks:   uplinks,
+		Segments:  ListNetworkSegments(),
 	}
 
 	// Since we are rendering via HTMX to the uplinks.html template, we pass the data to the template

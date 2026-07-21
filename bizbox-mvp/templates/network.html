@@ -3,18 +3,19 @@
   <!-- Tab Headers -->
   <div class="tabs-header" style="display: flex; gap: 16px; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; padding-bottom: 0;">
     <button class="tab-link active" onclick="switchNetworkTab(event, 'tab-uplinks')">
-      Sanal Anahtarlar (vSwitches / Uplinks)
+      vSwitches (Sanal Anahtarlar) ve Portlar
     </button>
     <button class="tab-link" onclick="switchNetworkTab(event, 'tab-qos')">
-      Trafik Önceliği (QoS)
+      Ağ Hız Öncelikleri (QoS)
     </button>
+  </div>
 
 
   <!-- Tab Content: QoS -->
   <div id="tab-qos" class="tab-panel" style="display: none;">
     <div class="content-card-header" style="margin-bottom: 24px;">
-      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Trafik Önceliklendirme (QoS)</h2>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makineler ve ağ segmentleri için HTB (Hierarchical Token Bucket) qdisc kuyruk kuralları</p>
+      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Ağ Hız Öncelikleri (QoS)</h2>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makinelerinizin ve ağ gruplarınızın ağ kullanım önceliklerini yönetin.</p>
     </div>
 
     <!-- Segment QoS Table -->

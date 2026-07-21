@@ -1,7 +1,7 @@
     <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
       <div>
-        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Dış Bağlantı ve Sanal Anahtar Yönetimi (Uplinks)</h2>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Fiziksel ağ arayüzlerini ve ESXi mantığındaki sanal anahtarları (vSwitch) yönetin</p>
+        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">vSwitches (Sanal Anahtarlar) ve Fiziksel Portlar</h2>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makinelerinizin dış dünyaya veya birbirlerine nasıl bağlandığını (topolojisini) görün ve yönetin.</p>
       </div>
       <button class="btn btn-primary" onclick="createVSwitch()">Yeni vSwitch Oluştur</button>
     </div>
@@ -32,21 +32,51 @@
                 
                 <!-- Portgroups Side (Left) -->
                 <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-color); padding: 16px;">
-                  <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-top: 0; margin-bottom: 16px;">Bağlı Portgruplar</h4>
-                  <!-- MOCK for now, we can list segments connected to this vswitch if we pass them -->
-                  <div style="font-size: 13px; color: var(--text-secondary); font-style: italic;">Sanal makineler portgruplar üzerinden bağlanır.</div>
+                  <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-top: 0; margin-bottom: 16px;">Bağlı Portgruplar ve Makineler</h4>
+                  
+                  {{$vswitchName := .Name}}
+                  {{$hasSegments := false}}
+                  <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {{range $.Segments}}
+                      {{if eq .VSwitch $vswitchName}}
+                        {{$hasSegments = true}}
+                        <div style="padding: 10px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;">
+                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px;">
+                            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📁 {{.Name}}</span>
+                            {{if ne .VlanID 0}}<span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-size: 10px; padding: 1px 4px; border-radius: 4px;">VLAN {{.VlanID}}</span>{{end}}
+                          </div>
+                          <!-- List VMs connected to this segment -->
+                          {{if .VMs}}
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                              {{range .VMs}}
+                                <span style="font-size: 11px; font-family: var(--font-mono); background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Aktif Sanal Makine">
+                                  <span style="width: 6px; height: 6px; background-color: var(--success-color); border-radius: 50%;"></span>
+                                  🖥️ {{.}}
+                                </span>
+                              {{end}}
+                            </div>
+                          {{else}}
+                            <span style="font-size: 11px; color: var(--text-secondary); font-style: italic;">Atanmış sanal makine yok</span>
+                          {{end}}
+                        </div>
+                      {{end}}
+                    {{end}}
+                    {{if not $hasSegments}}
+                      <div style="font-size: 12px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu vSwitch'e bağlı herhangi bir Portgrup bulunamadı.</div>
+                    {{end}}
+                  </div>
                 </div>
 
                 <!-- The Switch Backbone -->
-                <div style="width: 20px; background: linear-gradient(to bottom, var(--border-color), var(--border-color)); border-radius: 10px; position: relative;">
-                  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); writing-mode: vertical-rl; text-orientation: mixed; font-size: 12px; font-weight: 700; color: var(--text-secondary); letter-spacing: 2px;">VSWITCH</div>
+                <div style="width: 28px; background: linear-gradient(to bottom, var(--accent-color), var(--border-color)); border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center;">
+                  <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 2px; text-transform: uppercase;">vSwitch</div>
                 </div>
 
                 <!-- Physical Adapters Side (Right) -->
                 <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-color); padding: 16px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 0;">Fiziksel Adaptörler (Uplinks)</h4>
-                    <button type="button" style="background: none; border: none; color: var(--accent-color); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline;" onclick="openAttachModal('{{.Name}}')">+ Adaptör Ekle</button>
+                    <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 0;">Fiziksel Portlar (Ağ Kartları)</h4>
+                    <button type="button" style="background: none; border: none; color: var(--accent-color); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline;" onclick="openAttachModal('{{.Name}}')">+ Port Ekle</button>
                   </div>
                   
                   {{if .Interfaces}}
@@ -54,15 +84,15 @@
                       {{range .Interfaces}}
                       <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                          <span style="color: var(--success-color);">🔗</span>
-                          <span style="font-size: 14px; font-weight: 500; font-family: var(--font-mono); color: var(--text-primary);">{{.}}</span>
+                          <span style="color: var(--success-color);">🔌</span>
+                          <span style="font-size: 13px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary);">{{.}}</span>
                         </div>
-                        <button type="button" style="background: none; border: none; color: var(--danger-color); font-size: 11px; cursor: pointer;" hx-post="/api/network/uplinks/{{.}}/detach" hx-swap="none" hx-confirm="Adaptörü çıkarmak istediğinize emin misiniz? Dış ağ bağlantısı kesilebilir." onsubmit="setTimeout(function(){ htmx.trigger('body', 'uplinks-updated'); }, 500);">Çıkar</button>
+                        <button type="button" style="background: none; border: none; color: var(--danger-color); font-size: 11px; cursor: pointer;" hx-post="/api/network/uplinks/{{.}}/detach" hx-swap="none" hx-confirm="Adaptörü çıkarmak istediğinize emin misiniz? Dış ağ bağlantısı kesilebilir." onsubmit="setTimeout(function(){ htmx.trigger('body', 'uplinks-updated'); }, 500);">Bağlantıyı Kes</button>
                       </div>
                       {{end}}
                     </div>
                   {{else}}
-                    <div style="font-size: 13px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu sanal anahtara bağlı fiziksel adaptör yok.</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu vSwitch'e henüz bağlı bir fiziksel ağ kablosu portu yok.</div>
                   {{end}}
                 </div>
                 

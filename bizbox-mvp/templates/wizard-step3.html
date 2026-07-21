@@ -8,38 +8,38 @@
   <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">Ağ Bağlantısı Tipi</label>
   <div style="display: flex; gap: 15px; margin-bottom: 20px;">
     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
-      <input type="radio" name="network_type" value="portgroup" checked onchange="toggleNetworkOptions()"> Portgrup (Önerilen)
+      <input type="radio" name="network_type" value="portgroup" checked onchange="toggleNetworkOptions()"> Portgrup (Ağ Kanalı - Önerilen)
     </label>
     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
-      <input type="radio" name="network_type" value="bridged" onchange="toggleNetworkOptions()"> Gelişmiş (Köprü/VLAN)
+      <input type="radio" name="network_type" value="bridged" onchange="toggleNetworkOptions()"> Gelişmiş Ayarlar (vSwitch / VLAN)
     </label>
     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
-      <input type="radio" name="network_type" value="nat" onchange="toggleNetworkOptions()"> NAT (Sadece İnternet)
+      <input type="radio" name="network_type" value="nat" onchange="toggleNetworkOptions()"> İnternet Paylaşımı (NAT)
     </label>
   </div>
 
   <div id="portgroup-options" style="margin-bottom: 20px;">
     <div class="form-group">
-      <label for="portgroup">Portgrup (Ağ Profili)</label>
+      <label for="portgroup">Bağlanacağı Portgrup (Ağ Kanalı)</label>
       <select id="portgroup" name="portgroup" class="form-control" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
         {{range .Segments}}
         <option value="{{.Name}}">{{.Name}} ({{.VSwitch}}{{if ne .VlanID 0}} - VLAN {{.VlanID}}{{end}})</option>
         {{end}}
       </select>
-      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin bağlanacağı önceden tanımlanmış portgrubu seçin.</small>
+      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Makinanın dahil olacağı önceden tanımlanmış Portgrubu seçin.</small>
     </div>
   </div>
 
   <div id="bridged-options" style="margin-bottom: 20px; display: none;">
     <div class="form-group">
-      <label for="network-bridge">Köprü Arabirimi (vSwitch)</label>
+      <label for="network-bridge">vSwitch (Sanal Anahtar Köprüsü)</label>
       <select id="network-bridge" name="network_bridge" class="form-control" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
         {{range .VSwitches}}
         <option value="{{.}}">{{.}}</option>
         {{end}}
-        <option value="incusbr0">incusbr0 (Varsayılan Incus Köprüsü)</option>
+        <option value="incusbr0">incusbr0 (Varsayılan Yerel Ağ)</option>
       </select>
-      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sistemin doğrudan bağlanacağı sanal anahtarı seçin.</small>
+      <small style="color: var(--text-secondary); font-size: 12px; display: block; margin-top: 4px;">Sanal makinenin doğrudan bağlanacağı vSwitch'i seçin.</small>
     </div>
 
     <div class="form-group" style="margin-top: 15px;">

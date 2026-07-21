@@ -1,15 +1,15 @@
 <div class="header-section fade-in">
     <div class="header-title">
-      <h1>Datastore Yönetimi</h1>
-      <p>Sisteminize bağlı fiziksel diskleri listeleyin ve ZFS depolama havuzları oluşturun.</p>
+      <h1>Depolama Alanları (Datastores)</h1>
+      <p>Sanal makinelerinizin verilerini depolamak için fiziksel diskleri formatlayıp ZFS depolama havuzları oluşturun.</p>
     </div>
 </div>
 
 <div class="content-card fade-in" style="animation-delay: 0.1s; margin-bottom: 24px;">
-    <h3>Mevcut Datastore'lar (ZFS Havuzları)</h3>
+    <h3>Kullanımdaki Depolama Alanları (Datastores)</h3>
     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
-        Sistemde oluşturulmuş ve Incus'a bağlanmış olan depolama havuzları (Datastores). 
-        'default' havuzu sistem için gereklidir ve silinemez.
+        Sanal makinelerinizin disk dosyalarını ve sistem yedeklerini saklamak için hazırlanan aktif depolama alanları. 
+        'default' (Varsayılan) alanı ana sistem için zorunludur ve silinemez.
     </p>
 
     {{if .Pools}}
@@ -52,10 +52,10 @@
 </div>
 
 <div class="content-card fade-in" style="animation-delay: 0.2s;">
-    <h3>Bağlı Olmayan Diskler</h3>
+    <h3>Kullanılmayan Boş Diskler</h3>
     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
-        Sisteminizde bulunan ancak herhangi bir dosya sistemine bağlı olmayan diskler aşağıda listelenmiştir. 
-        Bu diskleri formatlayarak yeni bir Datastore (ZFS Pool) oluşturabilirsiniz.
+        Sisteminizde takılı olan ancak henüz biçimlendirilmemiş boş diskler aşağıda listelenmiştir. 
+        Bu diskleri formatlayarak sanal makineler için yeni bir depolama alanı hazırlayabilirsiniz.
     </p>
 
     {{if .Disks}}

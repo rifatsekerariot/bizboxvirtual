@@ -1,10 +1,10 @@
 <div class="content-card" hx-get="/api/network/portgroups" hx-trigger="segments-updated from:body" hx-swap="outerHTML">
   <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
     <div>
-      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Portgruplar (Ağ Profilleri)</h2>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makinelerin bağlanacağı ağ yapılandırmaları (vSwitch + VLAN)</p>
+      <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Portgruplar (Ağ Kanalları)</h2>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makinelerinizin hangi vSwitch ve VLAN üzerinden iletişim kuracağını belirleyen bağlantı kanalları.</p>
     </div>
-    <button class="btn btn-primary" onclick="openSegmentModal()">Yeni Portgrup</button>
+    <button class="btn btn-primary" onclick="openSegmentModal()">Yeni Portgrup Oluştur</button>
   </div>
 
   {{if .Segments}}
@@ -72,14 +72,13 @@
       <div class="form-group" style="margin-bottom: 20px;">
         <label for="vswitch_name" style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">Bağlı vSwitch (Sanal Anahtar)</label>
         <select id="vswitch_name" name="vswitch_name" class="form-control" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); background-color: var(--bg-color); color: var(--text-primary); font-family: var(--font-ui);">
-          <!-- Dynamic vswitches will be populated or assume br-int -->
-          <option value="br-int">br-int (Varsayılan OVS Köprüsü)</option>
-          <option value="br-ext">br-ext (Dış Ağ Köprüsü)</option>
+          <option value="br-int">br-int (Varsayılan İç Ağ vSwitch'i)</option>
+          <option value="br-ext">br-ext (İnternet / Dış Ağ vSwitch'i)</option>
         </select>
       </div>
 
       <div class="form-group" style="margin-bottom: 24px;">
-        <label for="vlan_id" style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">VLAN ID (Opsiyonel)</label>
+        <label for="vlan_id" style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">VLAN ID (Ağ Bölüm Numarası - Opsiyonel)</label>
         <input type="number" id="vlan_id" name="vlan_id" min="1" max="4094" class="form-control" placeholder="1-4094 arası (Boş bırakırsanız otomatik atanır)" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-btn); background-color: var(--bg-color); color: var(--text-primary); font-family: var(--font-ui);">
       </div>
       
