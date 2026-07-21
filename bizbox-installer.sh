@@ -329,42 +329,8 @@ chroot /target systemd-machine-id-setup
 chroot /target systemctl disable bizbox-installer.service 2>/dev/null || true
 rm -f /target/usr/local/sbin/bizbox-installer.sh
 
-# ---------------------------------------------------------------------------
-# 5. ZFS depolama alani
-# ---------------------------------------------------------------------------
-echo -e "\t    Kurulum durumu: ZFS DEPOLAMA ALANI YAPILANDIRILIYOR..."
-
-chroot /target zpool destroy -f rft 2>/dev/null || true
-
-if [ -n "$SECONDARY_DISK" ]; then
-  wipe_disk "$SECONDARY_DISK"
-  parted -s "/dev/$SECONDARY_DISK" mklabel gpt mkpart primary 0% 100%
-  partprobe "/dev/$SECONDARY_DISK" 2>/dev/null || true
-  udevadm settle --timeout=10 || true
-  sleep 3
-
-  SECONDARY_PART="/dev/$(part_name "$SECONDARY_DISK" 1)"
-  # Partition node olusana kadar bekle
-  for i in $(seq 1 20); do
-    [ -b "$SECONDARY_PART" ] && break
-    sleep 1
-  done
-
-  if [ -b "$SECONDARY_PART" ]; then
-    chroot /target zpool create -f rft "$SECONDARY_PART"
-  else
-    echo -e "\t    UYARI: Secondary disk partition bulunamadi, loopback'e geciyor..."
-    chroot /target truncate -s 20G /var/lib/bizbox_zfs.img
-    chroot /target zpool create -f rft /var/lib/bizbox_zfs.img
-  fi
-else
-  rm -f /target/var/lib/bizbox_zfs.img
-  chroot /target truncate -s 20G /var/lib/bizbox_zfs.img
-  chroot /target zpool create -f rft /var/lib/bizbox_zfs.img
-fi
-
-chroot /target zfs create -p rft/virtual-machines 2>/dev/null || true
-chroot /target zfs create -p rft/containers       2>/dev/null || true
+# ZFS is intentionally NOT configured during initial install. 
+# The user will configure Datastores (ZFS pools) later via the Web UI.
 
 # ---------------------------------------------------------------------------
 # 6. Open vSwitch
