@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
 	"strings"
 
 	"github.com/lxc/incus/v7/shared/api"
