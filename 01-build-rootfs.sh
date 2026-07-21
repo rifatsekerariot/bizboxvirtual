@@ -98,7 +98,7 @@ EOF
     openvswitch-switch openvswitch-common \
     incus incus-client \
     sqlite3 \
-    iptables \
+    iptables nftables \
     curl wget \
     parted gdisk \
     dosfstools e2fsprogs \
