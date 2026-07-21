@@ -5,7 +5,7 @@
 # script only runs from live media. But we also guard here defensively.
 
 set -euo pipefail
-exec >/dev/tty1 2>&1
+exec > >(tee -a /var/log/bizbox-installer.log >/dev/tty1) 2>&1
 
 clear
 echo -e "\n\n"
@@ -177,6 +177,7 @@ fi
 systemctl stop incus incus.socket lxcfs 2>/dev/null || true
 umount -lf /var/lib/lxcfs 2>/dev/null || true
 
+set +e
 rsync -aAX --info=progress2 \
   --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run \
   --exclude=/mnt --exclude=/media --exclude=/target --exclude=/cdrom \
@@ -185,6 +186,14 @@ rsync -aAX --info=progress2 \
   --exclude=/var/lib/incus/virtual-machines \
   --exclude=/var/lib/incus/containers \
   / /target/
+RSYNC_EXIT=$?
+set -e
+if [ $RSYNC_EXIT -ne 0 ] && [ $RSYNC_EXIT -ne 23 ] && [ $RSYNC_EXIT -ne 24 ]; then
+  echo -e "\t    HATA: rsync basarisiz oldu! (Exit code: $RSYNC_EXIT)"
+  exit $RSYNC_EXIT
+else
+  echo -e "\t    rsync kopyalama islemi tamamlandi (Exit code: $RSYNC_EXIT)."
+fi
 
 mkdir -p /target/{proc,sys,dev,run,tmp}
 chmod 1777 /target/tmp
