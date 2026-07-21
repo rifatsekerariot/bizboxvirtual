@@ -27,7 +27,7 @@ cp "$ROOTFS_DIR/boot/$INITRD" "$ISO_TREE/casper/initrd"
 
 echo "====== [2/4] Compressing rootfs to squashfs (xz, this takes a while) ======"
 mksquashfs "$ROOTFS_DIR" "$ISO_TREE/casper/filesystem.squashfs" \
-  -comp xz -e boot \
+  -comp xz \
   -noappend
 
 printf "%s" "$(du -sx --block-size=1 "$ROOTFS_DIR" | cut -f1)" > "$ISO_TREE/casper/filesystem.size"

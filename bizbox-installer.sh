@@ -150,11 +150,10 @@ if [ "$IS_UEFI" -eq 1 ]; then
   mkfs.vfat -F32 "$ESP_PART"
 else
   echo -e "\t    Mod: BIOS/Legacy"
-  parted -s "/dev/$TARGET_DISK" mklabel gpt \
-    mkpart bios_grub 1MiB 2MiB \
-    set 1 bios_grub on \
-    mkpart primary ext4 2MiB 100%
-  ROOT_PART="/dev/$(part_name "$TARGET_DISK" 2)"
+  parted -s "/dev/$TARGET_DISK" mklabel msdos \
+    mkpart primary ext4 1MiB 100% \
+    set 1 boot on
+  ROOT_PART="/dev/$(part_name "$TARGET_DISK" 1)"
   udevadm settle --timeout=10 || true
   sleep 2
 fi
@@ -276,6 +275,16 @@ if [ "$IS_UEFI" -eq 1 ]; then
     --efi-directory=/boot/efi \
     --removable \
     --recheck
+
+  # Yonlendirme grub.cfg dosyalarini ESP uzerindeki olasi tum dizinlere yaziyoruz
+  for dir in BizBox ubuntu BOOT; do
+    mkdir -p "/target/boot/efi/EFI/$dir"
+    cat > "/target/boot/efi/EFI/$dir/grub.cfg" << EOF
+search --no-floppy --fs-uuid --set=root $ROOT_UUID
+set prefix=(\$root)/boot/grub
+configfile \$prefix/grub.cfg
+EOF
+  done
 
 else
   chroot /target grub-install \
