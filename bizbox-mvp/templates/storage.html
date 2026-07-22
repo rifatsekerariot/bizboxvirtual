@@ -1,200 +1,252 @@
-<div class="header-section fade-in">
-    <div class="header-title">
-      <h1>Depolama Alanları (Datastores)</h1>
-      <p>Sanal makinelerinizin verilerini depolamak için fiziksel diskleri formatlayıp ZFS depolama havuzları oluşturun.</p>
-    </div>
+<div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+  <div>
+    <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Depolama Alanları (Datastores & Devices)</h2>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makinelerinizin verilerini barındıran ZFS depolama havuzları ve fiziksel disklerin yönetimi.</p>
+  </div>
 </div>
 
-<div class="content-card fade-in" style="animation-delay: 0.1s; margin-bottom: 24px;">
-    <h3>Kullanımdaki Depolama Alanları (Datastores)</h3>
-    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
-        Sanal makinelerinizin disk dosyalarını ve sistem yedeklerini saklamak için hazırlanan aktif depolama alanları. 
-        'default' (Varsayılan) alanı ana sistem için zorunludur ve silinemez.
-    </p>
+<!-- Tab Controls -->
+<div style="display: flex; gap: 12px; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; padding-bottom: 8px;">
+  <button class="nav-subtab-btn active" id="tab-datastores-btn" onclick="switchStorageTab('datastores')" style="background: none; border: none; padding: 8px 16px; font-weight: 600; font-size: 14px; color: var(--accent-color); border-bottom: 2px solid var(--accent-color); cursor: pointer;">📁 Datastores (Depolama Havuzları)</button>
+  <button class="nav-subtab-btn" id="tab-disks-btn" onclick="switchStorageTab('disks')" style="background: none; border: none; padding: 8px 16px; font-weight: 600; font-size: 14px; color: var(--text-secondary); cursor: pointer;">💾 Fiziksel Diskler (Physical Devices)</button>
+</div>
 
+<div id="storage-content-area">
+
+  <!-- TAB 1: Datastores -->
+  <div id="tab-datastores-content" class="storage-tab-content" style="display: block;">
     {{if .Pools}}
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Havuz Adı</th>
-                <th>Sürücü (Driver)</th>
-                <th>Durum</th>
-                <th>Kullanım</th>
-                <th>İşlem</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Pools}}
-            <tr>
-                <td style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">{{.Name}}</td>
-                <td><span class="badge">{{.Driver}}</span></td>
-                <td>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="status-dot {{if eq .Status "Created"}}status-running{{else}}status-stopped{{end}}"></span>
-                        {{.Status}}
-                    </div>
-                </td>
-                <td>{{len .UsedBy}} instance</td>
-                <td>
-                    {{if eq .Name "default"}}
-                        <button class="btn btn-secondary btn-sm" disabled title="Varsayılan havuz silinemez">Silinemez</button>
-                    {{else}}
-                        <button class="btn btn-danger btn-sm" onclick="deleteDatastore('{{.Name}}')">Sil</button>
-                    {{end}}
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        {{range .Pools}}
+          <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+            
+            <!-- Datastore Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 24px;">📁</span>
+                <div>
+                  <h3 style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0;">{{.Name}}</h3>
+                  <span style="font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary);">Kaynak: {{.Source}}</span>
+                </div>
+                {{if .IsSystem}}
+                  <span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-size: 11px; padding: 2px 8px; border-radius: 4px;">Sistem (System Pool)</span>
+                {{end}}
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="text-align: right;">
+                  <span style="display: block; font-size: 12px; color: var(--text-secondary);">Format / Sürücü</span>
+                  <strong style="font-size: 13px; color: var(--text-primary); font-family: var(--font-mono); text-transform: uppercase;">{{.Driver}}</strong>
+                </div>
+                
+                {{if not .IsSystem}}
+                  <button type="button" class="btn" style="background: transparent; color: var(--danger-color); border: 1px solid var(--danger-color); padding: 6px 12px; font-size: 12px;" onclick="deleteDatastore('{{.Name}}')">Sil</button>
+                {{else}}
+                  <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;" disabled title="Varsayılan sistem havuzu silinemez">Korunan Havuz</button>
+                {{end}}
+              </div>
+            </div>
+
+            <!-- Metrics & Progress Bar -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                <span>
+                  <strong>Kullanılan:</strong> <span style="font-family: var(--font-mono);">{{if eq .UsedStr "0 B"}}Dinamik Havuz{{else}}{{.UsedStr}}{{end}}</span> / 
+                  <strong>Toplam Kapasite:</strong> <span style="font-family: var(--font-mono);">{{if eq .TotalStr "0 B"}}Sınırsız (Host Shared){{else}}{{.TotalStr}}{{end}}</span>
+                </span>
+                <span style="font-weight: 700; font-family: var(--font-mono); color: {{if gt .UsedPercent 90}}var(--danger-color){{else if gt .UsedPercent 70}}var(--warning-color){{else}}var(--success-color){{end}};">
+                  {{.UsedPercent}}% Dolu (Boş: {{if eq .FreeStr "0 B"}}Aktif{{else}}{{.FreeStr}}{{end}})
+                </span>
+              </div>
+
+              <!-- Usage Bar -->
+              <div style="width: 100%; height: 12px; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; position: relative;">
+                <div style="width: {{if eq .UsedPercent 0}}5{{else}}{{.UsedPercent}}{{end}}%; height: 100%; background: {{if gt .UsedPercent 90}}var(--danger-color){{else if gt .UsedPercent 70}}var(--warning-color){{else}}var(--accent-color){{end}}; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+
+            <!-- Footer Stats -->
+            <div style="display: flex; gap: 24px; font-size: 12px; color: var(--text-secondary); background-color: var(--bg-color); padding: 10px 14px; border-radius: 6px;">
+              <div>🖥️ <strong>Bağlı Sanal Makineler:</strong> {{.UsedVMs}} Sanal Makine / Konteyner</div>
+              <div>⚡ <strong>Sağlık Durumu:</strong> <span style="color: var(--success-color); font-weight: 600;">● Normal (Mounted)</span></div>
+            </div>
+
+          </div>
+        {{end}}
+      </div>
     {{else}}
-    <p style="font-size: 13px; color: var(--text-secondary);">Henüz oluşturulmuş bir Datastore bulunmuyor.</p>
+      <div style="text-align: center; color: var(--text-secondary); padding: 40px; border: 1px dashed var(--border-color); border-radius: 8px;">
+        Kayıtlı Datastore bulunamadı.
+      </div>
     {{end}}
-</div>
+  </div>
 
-<div class="content-card fade-in" style="animation-delay: 0.2s;">
-    <h3>Kullanılmayan Boş Diskler</h3>
-    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
-        Sisteminizde takılı olan ancak henüz biçimlendirilmemiş boş diskler aşağıda listelenmiştir. 
-        Bu diskleri formatlayarak sanal makineler için yeni bir depolama alanı hazırlayabilirsiniz.
-    </p>
-
-    {{if .Disks}}
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Disk Adı</th>
-                <th>Boyut</th>
-                <th>Tür</th>
-                <th>İşlem</th>
+  <!-- TAB 2: Physical Disks (Devices) -->
+  <div id="tab-disks-content" class="storage-tab-content" style="display: none;">
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px;">
+      <h3 style="font-size: 15px; font-weight: 600; margin-top: 0; margin-bottom: 16px; color: var(--text-primary);">Sunucu Fiziksel Disk Cihazları (Physical Disks & Partitions)</h3>
+      
+      {{if .Disks}}
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--text-secondary);">
+              <th style="padding: 10px;">Cihaz Yolu</th>
+              <th style="padding: 10px;">Medya Türü</th>
+              <th style="padding: 10px;">Kapasite</th>
+              <th style="padding: 10px;">Model / Seri No</th>
+              <th style="padding: 10px;">Tür</th>
+              <th style="padding: 10px; text-align: right;">İşlem</th>
             </tr>
-        </thead>
-        <tbody>
+          </thead>
+          <tbody>
             {{range .Disks}}
-            <tr>
-                <td style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">/dev/{{.Name}}</td>
-                <td><span class="badge">{{.Size}}</span></td>
-                <td>{{.Type}}</td>
-                <td>
-                    <button class="btn btn-primary btn-sm" onclick="triggerCreateDatastore('{{.Name}}')">Datastore Oluştur</button>
-                </td>
+            <tr style="border-bottom: 1px solid var(--border-color);">
+              <td style="padding: 12px 10px; font-family: var(--font-mono); font-weight: 700; color: var(--text-primary);">/dev/{{.Name}}</td>
+              <td style="padding: 12px 10px;">
+                <span class="badge" style="background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--accent-color); font-size: 11px; padding: 2px 6px; border-radius: 4px;">{{.MediaType}}</span>
+              </td>
+              <td style="padding: 12px 10px; font-family: var(--font-mono); font-weight: 600;">{{.Size}}</td>
+              <td style="padding: 12px 10px; color: var(--text-secondary); font-size: 12px;">
+                {{if .Model}}<strong>{{.Model}}</strong>{{else}}<span style="font-style: italic;">Jenerik Disk</span>{{end}}
+                {{if .Serial}}<br/><span style="font-family: var(--font-mono); font-size: 11px;">S/N: {{.Serial}}</span>{{end}}
+              </td>
+              <td style="padding: 12px 10px; font-family: var(--font-mono); text-transform: uppercase;">{{.Type}}</td>
+              <td style="padding: 12px 10px; text-align: right;">
+                <button class="btn btn-primary" style="font-size: 11px; padding: 6px 12px;" onclick="triggerCreateDatastore('{{.Name}}')">+ Datastore Oluştur</button>
+              </td>
             </tr>
             {{end}}
-        </tbody>
-    </table>
-    {{else}}
-    <div style="text-align: center; padding: 40px 20px; border: 2px dashed var(--border-color); border-radius: var(--radius-card);">
-        <h5 style="margin: 0; font-size: 15px; color: var(--text-primary);">Boş disk bulunamadı</h5>
-        <p style="margin: 8px 0 0 0; font-size: 13px; color: var(--text-secondary);">Sisteme yeni bir fiziksel disk eklediğinizde burada görünecektir.</p>
+          </tbody>
+        </table>
+      {{else}}
+        <div style="text-align: center; padding: 40px 20px; border: 2px dashed var(--border-color); border-radius: 8px;">
+          <h5 style="margin: 0; font-size: 15px; color: var(--text-primary);">Boşta Fiziksel Disk Bulunamadı</h5>
+          <p style="margin: 8px 0 0 0; font-size: 13px; color: var(--text-secondary);">Sisteminizdeki tüm diskler bir Datastore veya işletim sistemi bölüntüsü tarafından kullanılmaktadır.</p>
+        </div>
+      {{end}}
     </div>
-    {{end}}
+  </div>
+
 </div>
 
 <!-- Create Datastore Modal -->
-<div id="datastore-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6); z-index: 1000; align-items: center; justify-content: center;">
-    <div class="modal-content" style="background: var(--card-bg); border-radius: var(--radius-card); padding: 24px; width: 450px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);">
-        <h3 style="margin-top: 0; color: var(--text-primary); font-size: 18px; display: flex; align-items: center; gap: 8px;">
-            <svg style="width: 24px; height: 24px; color: var(--primary-color);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Yeni Datastore (ZFS Pool)
-        </h3>
-        
-        <div style="margin: 16px 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">
-            Seçilen disk: <strong id="selected-disk" style="color: var(--text-primary); font-family: 'IBM Plex Mono', monospace;"></strong>
-            <br/><br/>
-            <span style="color: var(--error-color); font-weight: 600;">DİKKAT:</span> Bu işlem seçili diskteki tüm verileri kalıcı olarak silecektir. Lütfen havuz adını girin.
-        </div>
-        
-        <div class="form-group">
-            <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500;">Havuz Adı (Örn: rft, zpool1)</label>
-            <input type="text" id="pool-name-input" placeholder="rft" style="width: 100%; padding: 10px; border-radius: var(--radius-btn); border: 1px solid var(--border-color); font-family: 'Inter';">
-        </div>
-
-        <div id="datastore-loading" style="display: none; align-items: center; gap: 10px; margin-top: 15px; color: var(--primary-color); font-size: 14px; font-weight: 500;">
-            <div class="spinner" style="width: 20px; height: 20px; border-width: 3px;"></div>
-            İşlem yapılıyor, lütfen bekleyin...
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;" id="datastore-actions">
-            <button class="btn btn-secondary" onclick="closeDatastoreModal()">İptal</button>
-            <button class="btn btn-danger" onclick="executeCreateDatastore()">Formatla ve Oluştur</button>
-        </div>
+<div id="datastore-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+  <div class="modal-content" style="background: var(--card-bg); border-radius: var(--radius-card); padding: 28px; width: 450px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);">
+    <h3 style="margin-top: 0; color: var(--text-primary); font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+      📁 Yeni ESXi Datastore (ZFS Pool)
+    </h3>
+    
+    <div style="margin: 16px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+      Seçilen disk: <strong id="selected-disk" style="color: var(--text-primary); font-family: var(--font-mono);"></strong>
+      <br/><br/>
+      <span style="color: var(--danger-color); font-weight: 600;">⚠️ UYARI:</span> Seçilen disk üzerindeki tüm veriler kalıcı olarak silinecek ve ZFS dosya sistemi ile formatlanacaktır.
     </div>
+    
+    <div class="form-group" style="margin-bottom: 16px;">
+      <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">Datastore Adı (Örn: datastore2, nvme-pool)</label>
+      <input type="text" id="pool-name-input" placeholder="datastore2" class="form-control" style="width: 100%; padding: 10px;">
+    </div>
+
+    <div id="datastore-loading" style="display: none; align-items: center; gap: 10px; margin-top: 15px; color: var(--accent-color); font-size: 13px; font-weight: 600;">
+      <div class="spinner" style="width: 18px; height: 18px; border-width: 2px;"></div>
+      Disk biçimlendiriliyor ve Datastore oluşturuluyor...
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;" id="datastore-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeDatastoreModal()">İptal</button>
+      <button type="button" class="btn btn-primary" onclick="executeCreateDatastore()">Formatla ve Oluştur</button>
+    </div>
+  </div>
 </div>
 
 <script>
-    var currentDisk = null;
+  function switchStorageTab(tabName) {
+    document.querySelectorAll('.storage-tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.nav-subtab-btn').forEach(btn => {
+      btn.style.color = 'var(--text-secondary)';
+      btn.style.borderBottom = 'none';
+    });
+    
+    const activeBtn = document.getElementById('tab-' + tabName + '-btn');
+    const activeContent = document.getElementById('tab-' + tabName + '-content');
+    if (activeBtn && activeContent) {
+      activeBtn.style.color = 'var(--accent-color)';
+      activeBtn.style.borderBottom = '2px solid var(--accent-color)';
+      activeContent.style.display = 'block';
+    }
+  }
 
-    window.triggerCreateDatastore = function(diskName) {
-        currentDisk = diskName;
-        document.getElementById('selected-disk').innerText = '/dev/' + diskName;
-        document.getElementById('pool-name-input').value = 'rft';
-        
-        const modal = document.getElementById('datastore-modal');
-        modal.style.display = 'flex';
+  var currentDisk = null;
+
+  window.triggerCreateDatastore = function(diskName) {
+    currentDisk = diskName;
+    document.getElementById('selected-disk').innerText = '/dev/' + diskName;
+    document.getElementById('pool-name-input').value = 'datastore2';
+    document.getElementById('datastore-modal').style.display = 'flex';
+  }
+
+  window.closeDatastoreModal = function() {
+    currentDisk = null;
+    document.getElementById('datastore-modal').style.display = 'none';
+    document.getElementById('pool-name-input').value = '';
+  }
+
+  window.executeCreateDatastore = function() {
+    if (!currentDisk) return;
+    
+    const poolName = document.getElementById('pool-name-input').value.trim();
+    if (!poolName) {
+      alert("Lütfen havuz adı girin.");
+      return;
     }
 
-    window.closeDatastoreModal = function() {
-        currentDisk = null;
-        document.getElementById('datastore-modal').style.display = 'none';
-        document.getElementById('pool-name-input').value = '';
+    document.getElementById('datastore-actions').style.display = 'none';
+    document.getElementById('datastore-loading').style.display = 'flex';
+
+    fetch('/api/storage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ pool_name: poolName, disk_name: currentDisk })
+    })
+    .then(resp => {
+      if (!resp.ok) {
+        return resp.text().then(txt => { throw new Error(txt); });
+      }
+      return resp.json();
+    })
+    .then(data => {
+      alert(data.message);
+      closeDatastoreModal();
+      if (typeof htmx !== 'undefined') {
+        htmx.trigger('body', 'storage-updated');
+      }
+    })
+    .catch(err => {
+      document.getElementById('datastore-actions').style.display = 'flex';
+      document.getElementById('datastore-loading').style.display = 'none';
+      alert("Hata: " + err.message);
+    });
+  }
+
+  window.deleteDatastore = function(poolName) {
+    if (!confirm("DİKKAT: '" + poolName + "' adlı datastore'u kalıcı olarak silmek istediğinize emin misiniz? Bu işlem disk üzerindeki tüm verileri silecektir!")) {
+      return;
     }
 
-    window.executeCreateDatastore = function() {
-        if (!currentDisk) return;
-        
-        const poolName = document.getElementById('pool-name-input').value.trim();
-        if (!poolName) {
-            alert("Lütfen havuz adı girin.");
-            return;
-        }
-
-        document.getElementById('datastore-actions').style.display = 'none';
-        document.getElementById('datastore-loading').style.display = 'flex';
-
-        fetch('/api/storage', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ pool_name: poolName, disk_name: currentDisk })
-        })
-        .then(resp => {
-            if (!resp.ok) {
-                return resp.text().then(txt => { throw new Error(txt); });
-            }
-            return resp.json();
-        })
-        .then(data => {
-            alert(data.message);
-            closeDatastoreModal();
-            // Refresh storage page
-            if (typeof htmx !== 'undefined') {
-                htmx.trigger('#dashboard-content', 'load');
-            }
-        })
-        .catch(err => {
-            document.getElementById('datastore-actions').style.display = 'flex';
-            document.getElementById('datastore-loading').style.display = 'none';
-            alert("Hata: " + err.message);
-        });
-    }
-
-    window.deleteDatastore = function(poolName) {
-        if (!confirm("DİKKAT: '" + poolName + "' adlı datastore'u kalıcı olarak silmek istediğinize emin misiniz? Bu işlem disk üzerindeki ZFS havuzunu ve tüm verileri yok edecektir!")) {
-            return;
-        }
-
-        fetch('/api/storage/' + poolName, {
-            method: 'DELETE'
-        })
-        .then(resp => {
-            if (!resp.ok) {
-                return resp.text().then(txt => { throw new Error(txt); });
-            }
-            alert(poolName + " başarıyla silindi ve disk temizlendi.");
-            if (typeof htmx !== 'undefined') {
-                htmx.trigger('#dashboard-content', 'load');
-            }
-        })
-        .catch(err => {
-            alert("Silme hatası: " + err.message);
-        });
-    }
+    fetch('/api/storage/' + poolName, {
+      method: 'DELETE'
+    })
+    .then(resp => {
+      if (!resp.ok) {
+        return resp.text().then(txt => { throw new Error(txt); });
+      }
+      alert(poolName + " başarıyla silindi.");
+      if (typeof htmx !== 'undefined') {
+        htmx.trigger('body', 'storage-updated');
+      }
+    })
+    .catch(err => {
+      alert("Silme hatası: " + err.message);
+    });
+  }
 </script>

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"strings"
 
 	incus "github.com/lxc/incus/v7/client"
 	"github.com/lxc/incus/v7/shared/api"
@@ -12,12 +13,16 @@ import (
 
 // RawDisk represents an unmounted, raw block device on the host
 type RawDisk struct {
-	Name       string    `json:"name"`
-	Size       string    `json:"size"`
-	Type       string    `json:"type"`
-	Mountpoint string    `json:"mountpoint"`
-	Fstype     string    `json:"fstype"`
-	Children   []RawDisk `json:"children,omitempty"`
+	Name       string      `json:"name"`
+	Size       string      `json:"size"`
+	Type       string      `json:"type"`
+	Mountpoint string      `json:"mountpoint"`
+	Fstype     string      `json:"fstype"`
+	Model      string      `json:"model"`
+	Serial     string      `json:"serial"`
+	Rota       interface{} `json:"rota"`
+	MediaType  string      `json:"media_type"`
+	Children   []RawDisk   `json:"children,omitempty"`
 }
 
 // LsblkOutput is the JSON structure returned by lsblk
@@ -25,9 +30,42 @@ type LsblkOutput struct {
 	Blockdevices []RawDisk `json:"blockdevices"`
 }
 
+// DatastoreInfo represents an ESXi-style datastore metric summary
+type DatastoreInfo struct {
+	Name        string `json:"name"`
+	Driver      string `json:"driver"`
+	Status      string `json:"status"`
+	Source      string `json:"source"`
+	TotalBytes  uint64 `json:"total_bytes"`
+	UsedBytes   uint64 `json:"used_bytes"`
+	FreeBytes   uint64 `json:"free_bytes"`
+	UsedPercent int    `json:"used_percent"`
+	TotalStr    string `json:"total_str"`
+	UsedStr     string `json:"used_str"`
+	FreeStr     string `json:"free_str"`
+	UsedVMs     int    `json:"used_vms"`
+	IsSystem    bool   `json:"is_system"`
+}
+
+func formatBytes(b uint64) string {
+	if b == 0 {
+		return "0 B"
+	}
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
 // ListRawDisks lists all unmounted physical disks/partitions
 func ListRawDisks() ([]RawDisk, error) {
-	cmd := exec.Command("lsblk", "-J", "-o", "NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE")
+	cmd := exec.Command("lsblk", "-J", "-o", "NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE,MODEL,SERIAL,ROTA")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("lsblk calistirilamadi: %w", err)
@@ -43,7 +81,15 @@ func ListRawDisks() ([]RawDisk, error) {
 		if dev.Type == "rom" || dev.Type == "loop" {
 			continue
 		}
-		
+
+		mediaType := "HDD (HDD)"
+		if strings.HasPrefix(dev.Name, "nvme") {
+			mediaType = "NVMe (Flash)"
+		} else if dev.Rota == false || fmt.Sprintf("%v", dev.Rota) == "0" {
+			mediaType = "SSD (Flash)"
+		}
+		dev.MediaType = mediaType
+
 		isMounted := dev.Mountpoint != "" && dev.Mountpoint != "null"
 		isZfs := dev.Fstype == "zfs_member"
 
@@ -57,12 +103,7 @@ func ListRawDisks() ([]RawDisk, error) {
 		}
 
 		if !isMounted && !isZfs {
-			rawDisks = append(rawDisks, RawDisk{
-				Name:       dev.Name,
-				Size:       dev.Size,
-				Type:       dev.Type,
-				Mountpoint: dev.Mountpoint,
-			})
+			rawDisks = append(rawDisks, dev)
 		}
 	}
 	return rawDisks, nil
@@ -100,6 +141,61 @@ func CreateDatastore(poolName, diskName string) error {
 	return nil
 }
 
+// ListDatastores returns all storage pools with resource metrics
+func ListDatastores() ([]DatastoreInfo, error) {
+	socketPath := "/var/lib/incus/unix.socket"
+	c, err := incus.ConnectIncusUnix(socketPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Incus client error: %v", err)
+	}
+
+	allPools, err := c.GetStoragePools()
+	if err != nil {
+		return nil, fmt.Errorf("Incus storage list başarısız: %w", err)
+	}
+
+	var datastores []DatastoreInfo
+	for _, p := range allPools {
+		res, errRes := c.GetStoragePoolResources(p.Name)
+		var totalBytes, usedBytes, freeBytes uint64
+		var usedPercent int
+
+		if errRes == nil && res.Space.Total > 0 {
+			totalBytes = res.Space.Total
+			usedBytes = res.Space.Used
+			freeBytes = totalBytes - usedBytes
+			usedPercent = int((float64(usedBytes) / float64(totalBytes)) * 100)
+		}
+
+		source := p.Config["source"]
+		if source == "" {
+			source = "Internal Storage"
+		}
+
+		isSystem := p.Name == "default" || p.Name == "local" || p.Description == "System Disk"
+
+		info := DatastoreInfo{
+			Name:        p.Name,
+			Driver:      p.Driver,
+			Status:      p.Status,
+			Source:      source,
+			TotalBytes:  totalBytes,
+			UsedBytes:   usedBytes,
+			FreeBytes:   freeBytes,
+			UsedPercent: usedPercent,
+			TotalStr:    formatBytes(totalBytes),
+			UsedStr:     formatBytes(usedBytes),
+			FreeStr:     formatBytes(freeBytes),
+			UsedVMs:     len(p.UsedBy),
+			IsSystem:    isSystem,
+		}
+
+		datastores = append(datastores, info)
+	}
+
+	return datastores, nil
+}
+
 // handleGetStoragePage renders the storage management interface
 func handleGetStoragePage(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("HX-Request") != "true" {
@@ -119,7 +215,7 @@ func handleGetStoragePage(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Disks []RawDisk
-		Pools []api.StoragePool
+		Pools []DatastoreInfo
 	}{
 		Disks: disks,
 		Pools: pools,
@@ -150,37 +246,12 @@ func handleCreateDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	LogSystemEvent(getUsername(r), "Datastore Oluşturma", poolName, "Başarılı")
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Datastore başarıyla oluşturuldu ve Incus'a eklendi.",
 	})
-}
-
-// ListDatastores returns all storage pools from Incus, filtering out system default pool
-func ListDatastores() ([]api.StoragePool, error) {
-	socketPath := "/var/lib/incus/unix.socket"
-	c, err := incus.ConnectIncusUnix(socketPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("Incus client error: %v", err)
-	}
-
-	allPools, err := c.GetStoragePools()
-	if err != nil {
-		return nil, fmt.Errorf("Incus storage list başarısız: %w", err)
-	}
-
-	var datastores []api.StoragePool
-	for _, p := range allPools {
-		// Hide system or default disk. Usually named "default" or "local" in setups.
-		if p.Name == "default" || p.Name == "local" || p.Description == "System Disk" {
-			continue
-		}
-		datastores = append(datastores, p)
-	}
-
-	return datastores, nil
 }
 
 // handleDeleteDatastoreAPI removes a datastore
@@ -197,14 +268,12 @@ func handleDeleteDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Get pool info to find if it was ZFS to optionally destroy zpool
 	pool, _, err := c.GetStoragePool(poolName)
 	if err != nil {
 		http.Error(w, "Pool bulunamadı", http.StatusNotFound)
 		return
 	}
 
-	// 2. Delete from Incus
 	err = c.DeleteStoragePool(poolName)
 	if err != nil {
 		LogSystemEvent(getUsername(r), "Datastore Silme", poolName, "Başarısız: "+err.Error())
@@ -212,8 +281,6 @@ func handleDeleteDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Destroy ZFS pool to free disk (Incus sometimes leaves the zpool imported if it was custom created, 
-	// but if Incus created it, it might wipe it. We try to destroy it just in case.)
 	if pool.Driver == "zfs" {
 		exec.Command("zpool", "destroy", poolName).Run()
 	}

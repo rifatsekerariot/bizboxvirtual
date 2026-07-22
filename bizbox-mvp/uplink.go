@@ -22,14 +22,42 @@ type UplinkInfo struct {
 	Name         string `json:"name"`
 	IsUp         bool   `json:"is_up"`
 	MacAddress   string `json:"mac_address"`
+	IPAddress    string `json:"ip_address"`
+	Netmask      string `json:"netmask"`
+	Gateway      string `json:"gateway"`
 	VSwitch      string `json:"vswitch"`
 	IsManagement bool   `json:"is_management"`
 }
 
 type NetworkUplinkResponse struct {
-	VSwitches []VSwitchInfo `json:"vswitches"`
-	Uplinks   []UplinkInfo  `json:"uplinks"`
-	Segments  []Segment     `json:"segments"`
+	VSwitches     []VSwitchInfo `json:"vswitches"`
+	Uplinks       []UplinkInfo  `json:"uplinks"`
+	Segments      []Segment     `json:"segments"`
+	ManagementIf  string        `json:"management_if"`
+	ManagementIP  string        `json:"management_ip"`
+	DefaultGateway string       `json:"default_gateway"`
+}
+
+func getInterfaceIPAndMask(ifaceName string) (ipAddr string, netmask string) {
+	iface, err := net.InterfaceByName(ifaceName)
+	if err != nil {
+		return "", ""
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", ""
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil {
+				ipAddr = ipNet.IP.String()
+				mask := net.IP(ipNet.Mask)
+				netmask = fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3])
+				return ipAddr, netmask
+			}
+		}
+	}
+	return "", ""
 }
 
 func getDefaultRouteInterface() string {
@@ -82,11 +110,14 @@ func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
 
 		validPhysicalLinks[name] = true
 		isUp := (iface.Flags & net.FlagUp) != 0
+		ip, mask := getInterfaceIPAndMask(name)
 
 		uplinks = append(uplinks, UplinkInfo{
 			Name:         name,
 			IsUp:         isUp,
 			MacAddress:   iface.HardwareAddr.String(),
+			IPAddress:    ip,
+			Netmask:      mask,
 			VSwitch:      "",
 			IsManagement: name == mgmtIface,
 		})
@@ -157,10 +188,14 @@ func handleGetUplinks(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	mgmtIP, _ := getInterfaceIPAndMask(mgmtIface)
+
 	response := NetworkUplinkResponse{
-		VSwitches: vswitches,
-		Uplinks:   uplinks,
-		Segments:  ListNetworkSegments(),
+		VSwitches:     vswitches,
+		Uplinks:       uplinks,
+		Segments:      ListNetworkSegments(),
+		ManagementIf:  mgmtIface,
+		ManagementIP:  mgmtIP,
 	}
 
 	// Since we are rendering via HTMX to the uplinks.html template, we pass the data to the template
@@ -382,3 +417,92 @@ func handleDetachUplink(w http.ResponseWriter, r *http.Request) {
 	// If we got here, interface wasn't found on any network
 	w.WriteHeader(http.StatusOK)
 }
+
+func handleRenewDHCP(w http.ResponseWriter, r *http.Request) {
+	iface := r.FormValue("iface")
+	if iface == "" {
+		iface = r.PathValue("iface")
+	}
+	if iface == "" {
+		http.Error(w, "Arayüz adı eksik", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Send dhclient command in background
+	cmdDhclient := exec.Command("dhclient", "-r", iface)
+	_ = cmdDhclient.Run()
+	cmdDhclientRenew := exec.Command("dhclient", iface)
+	err := cmdDhclientRenew.Run()
+
+	if err != nil {
+		// Fallback to netplan / ip link up
+		_ = exec.Command("netplan", "apply").Run()
+		_ = exec.Command("ip", "link", "set", iface, "up").Run()
+	}
+
+	LogSystemEvent(getUsername(r), "DHCP IP Yenileme", iface, "DHCP Yenileme İsteği Gönderildi")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("DHCP IP yenileme isteği başarıyla gönderildi."))
+}
+
+func handleConfigureManagementIP(w http.ResponseWriter, r *http.Request) {
+	iface := r.FormValue("iface")
+	mode := r.FormValue("mode") // "dhcp" or "static"
+	ipAddr := r.FormValue("ip")
+	netmask := r.FormValue("netmask")
+	gateway := r.FormValue("gateway")
+
+	if iface == "" {
+		http.Error(w, "Arayüz adı eksik", http.StatusBadRequest)
+		return
+	}
+
+	if mode == "dhcp" {
+		cmd := exec.Command("dhclient", iface)
+		_ = cmd.Run()
+		_ = exec.Command("netplan", "apply").Run()
+		LogSystemEvent(getUsername(r), "Yönetim IP Yapılandırma", fmt.Sprintf("%s -> DHCP", iface), "Başarılı")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Arayüz DHCP moduna alındı."))
+		return
+	}
+
+	if mode == "static" {
+		if ipAddr == "" {
+			http.Error(w, "IP adresi zorunludur", http.StatusBadRequest)
+			return
+		}
+		prefix := "24"
+		if netmask != "" {
+			maskIP := net.ParseIP(netmask)
+			if maskIP != nil {
+				mask := net.IPMask(maskIP.To4())
+				ones, _ := mask.Size()
+				if ones > 0 {
+					prefix = fmt.Sprintf("%d", ones)
+				}
+			}
+		}
+
+		// Flush old IP & set new static IP
+		_ = exec.Command("ip", "addr", "flush", "dev", iface).Run()
+		cmdAdd := exec.Command("ip", "addr", "add", fmt.Sprintf("%s/%s", ipAddr, prefix), "dev", iface)
+		if out, err := cmdAdd.CombinedOutput(); err != nil {
+			http.Error(w, "IP adresi eklenirken hata: "+string(out), http.StatusInternalServerError)
+			return
+		}
+		_ = exec.Command("ip", "link", "set", iface, "up").Run()
+
+		if gateway != "" {
+			_ = exec.Command("ip", "route", "add", "default", "via", gateway, "dev", iface).Run()
+		}
+
+		LogSystemEvent(getUsername(r), "Yönetim IP Yapılandırma", fmt.Sprintf("%s -> %s/%s", iface, ipAddr, prefix), "Başarılı")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Statik IP adresi başarıyla uygulandı."))
+		return
+	}
+
+	http.Error(w, "Geçersiz mod", http.StatusBadRequest)
+}
+

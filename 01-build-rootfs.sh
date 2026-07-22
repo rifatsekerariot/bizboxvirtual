@@ -85,7 +85,13 @@ EOF
   apt-get update -qq
   apt-get install -y --no-install-recommends \
     linux-image-generic \
+    linux-modules-extra-generic \
     linux-firmware \
+    kmod \
+    pciutils \
+    lsscsi \
+    nvme-cli \
+    smartmontools \
     casper \
     udev \
     systemd systemd-sysv \

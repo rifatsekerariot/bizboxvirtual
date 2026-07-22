@@ -1,174 +1,357 @@
-    <div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-      <div>
-        <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">vSwitches (Sanal Anahtarlar) ve Fiziksel Portlar</h2>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal makinelerinizin dış dünyaya veya birbirlerine nasıl bağlandığını (topolojisini) görün ve yönetin.</p>
-      </div>
-      <button class="btn btn-primary" onclick="createVSwitch()">Yeni vSwitch Oluştur</button>
-    </div>
-    
-    <div id="uplinks-content-area">
-      <!-- ESXi Style vSwitch representation -->
-      <div style="display: flex; flex-direction: column; gap: 30px;">
-        {{if .VSwitches}}
-          {{range .VSwitches}}
-            <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px;">
-              
-              <!-- vSwitch Header -->
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0;">{{.Name}}</h3>
-                  {{if .IsDefault}}
-                  <span class="badge" style="background-color: var(--bg-color); color: var(--text-secondary); border: 1px solid var(--border-color); font-size: 11px; padding: 2px 6px; border-radius: 4px;">Varsayılan (Default)</span>
-                  {{end}}
-                </div>
-                
-                {{if not .IsDefault}}
-                <button type="button" class="btn" style="background: transparent; color: var(--danger-color); border: 1px solid var(--danger-color); padding: 6px 12px; font-size: 12px;" onclick="deleteVSwitch('{{.Name}}')">Sil</button>
+<div class="content-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+  <div>
+    <h2 style="font-family: var(--font-ui); font-weight: 700; color: var(--accent-color);">Ağ Yönetimi ve Fiziksel Portlar (ESXi Mimarisi)</h2>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Sanal anahtarlar (vSwitch), fiziksel adaptörler (Uplink) ve sunucu yönetim IP (VMkernel) ayarlarını yönetin.</p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <button class="btn btn-secondary" onclick="renewDHCPAll()">🔄 DHCP IP Yenile</button>
+    <button class="btn btn-primary" onclick="createVSwitch()">+ Yeni vSwitch Oluştur</button>
+  </div>
+</div>
+
+<!-- Tab Controls -->
+<div style="display: flex; gap: 12px; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; padding-bottom: 8px;">
+  <button class="nav-subtab-btn active" id="tab-vswitches-btn" onclick="switchUplinksSubTab('vswitches')" style="background: none; border: none; padding: 8px 16px; font-weight: 600; font-size: 14px; color: var(--accent-color); border-bottom: 2px solid var(--accent-color); cursor: pointer;">🌐 vSwitches & Topoloji</button>
+  <button class="nav-subtab-btn" id="tab-uplinks-btn" onclick="switchUplinksSubTab('uplinks')" style="background: none; border: none; padding: 8px 16px; font-weight: 600; font-size: 14px; color: var(--text-secondary); cursor: pointer;">🔌 Fiziksel Adaptörler (NICs)</button>
+  <button class="nav-subtab-btn" id="tab-mgmt-btn" onclick="switchUplinksSubTab('mgmt')" style="background: none; border: none; padding: 8px 16px; font-weight: 600; font-size: 14px; color: var(--text-secondary); cursor: pointer;">⚙️ Yönetim IP (Management Network)</button>
+</div>
+
+<div id="uplinks-content-area">
+
+  <!-- TAB 1: vSwitches Topology -->
+  <div id="tab-vswitches-content" class="net-tab-content" style="display: block;">
+    <div style="display: flex; flex-direction: column; gap: 30px;">
+      {{if .VSwitches}}
+        {{range .VSwitches}}
+          <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px;">
+            
+            <!-- vSwitch Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <h3 style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0;">{{.Name}}</h3>
+                {{if .IsDefault}}
+                <span class="badge" style="background-color: var(--bg-color); color: var(--text-secondary); border: 1px solid var(--border-color); font-size: 11px; padding: 2px 6px; border-radius: 4px;">Varsayılan (Default)</span>
                 {{end}}
               </div>
+              
+              {{if not .IsDefault}}
+              <button type="button" class="btn" style="background: transparent; color: var(--danger-color); border: 1px solid var(--danger-color); padding: 6px 12px; font-size: 12px;" onclick="deleteVSwitch('{{.Name}}')">Sil</button>
+              {{end}}
+            </div>
 
-              <!-- vSwitch Topology -->
-              <div style="display: flex; gap: 40px; align-items: stretch;">
+            <!-- vSwitch Topology -->
+            <div style="display: flex; gap: 40px; align-items: stretch;">
+              
+              <!-- Portgroups Side (Left) -->
+              <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-color); padding: 16px;">
+                <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-top: 0; margin-bottom: 16px;">Bağlı Portgruplar ve Makineler</h4>
                 
-                <!-- Portgroups Side (Left) -->
-                <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-color); padding: 16px;">
-                  <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-top: 0; margin-bottom: 16px;">Bağlı Portgruplar ve Makineler</h4>
-                  
-                  {{$vswitchName := .Name}}
-                  {{$hasSegments := false}}
-                  <div style="display: flex; flex-direction: column; gap: 10px;">
-                    {{range $.Segments}}
-                      {{if eq .VSwitch $vswitchName}}
-                        {{$hasSegments = true}}
-                        <div style="padding: 10px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;">
-                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px;">
-                            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📁 {{.Name}}</span>
-                            {{if ne .VlanID 0}}<span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-size: 10px; padding: 1px 4px; border-radius: 4px;">VLAN {{.VlanID}}</span>{{end}}
+                {{$vswitchName := .Name}}
+                {{$hasSegments := false}}
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  {{range $.Segments}}
+                    {{if eq .VSwitch $vswitchName}}
+                      {{$hasSegments = true}}
+                      <div style="padding: 10px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px dashed var(--border-color); padding-bottom: 4px;">
+                          <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📁 {{.Name}}</span>
+                          {{if ne .VlanID 0}}<span class="badge" style="background-color: var(--bg-color); color: var(--accent-color); border: 1px solid var(--border-color); font-size: 10px; padding: 1px 4px; border-radius: 4px;">VLAN {{.VlanID}}</span>{{end}}
+                        </div>
+                        <!-- List VMs connected to this segment -->
+                        {{if .VMs}}
+                          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                            {{range .VMs}}
+                              <span style="font-size: 11px; font-family: var(--font-mono); background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Aktif Sanal Makine">
+                                <span style="width: 6px; height: 6px; background-color: var(--success-color); border-radius: 50%;"></span>
+                                🖥️ {{.}}
+                              </span>
+                            {{end}}
                           </div>
-                          <!-- List VMs connected to this segment -->
-                          {{if .VMs}}
-                            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
-                              {{range .VMs}}
-                                <span style="font-size: 11px; font-family: var(--font-mono); background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Aktif Sanal Makine">
-                                  <span style="width: 6px; height: 6px; background-color: var(--success-color); border-radius: 50%;"></span>
-                                  🖥️ {{.}}
-                                </span>
-                              {{end}}
-                            </div>
-                          {{else}}
-                            <span style="font-size: 11px; color: var(--text-secondary); font-style: italic;">Atanmış sanal makine yok</span>
-                          {{end}}
-                        </div>
-                      {{end}}
-                    {{end}}
-                    {{if not $hasSegments}}
-                      <div style="font-size: 12px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu vSwitch'e bağlı herhangi bir Portgrup bulunamadı.</div>
-                    {{end}}
-                  </div>
-                </div>
-
-                <!-- The Switch Backbone -->
-                <div style="width: 28px; background: linear-gradient(to bottom, var(--accent-color), var(--border-color)); border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center;">
-                  <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 2px; text-transform: uppercase;">vSwitch</div>
-                </div>
-
-                <!-- Physical Adapters Side (Right) -->
-                <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-color); padding: 16px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 0;">Fiziksel Portlar (Ağ Kartları)</h4>
-                    <button type="button" style="background: none; border: none; color: var(--accent-color); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline;" onclick="openAttachModal('{{.Name}}')">+ Port Ekle</button>
-                  </div>
-                  
-                  {{if .Interfaces}}
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                      {{range .Interfaces}}
-                      <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                          <span style="color: var(--success-color);">🔌</span>
-                          <span style="font-size: 13px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary);">{{.}}</span>
-                        </div>
-                        <button type="button" style="background: none; border: none; color: var(--danger-color); font-size: 11px; cursor: pointer;" hx-post="/api/network/uplinks/{{.}}/detach" hx-swap="none" hx-confirm="Adaptörü çıkarmak istediğinize emin misiniz? Dış ağ bağlantısı kesilebilir." onsubmit="setTimeout(function(){ htmx.trigger('body', 'uplinks-updated'); }, 500);">Bağlantıyı Kes</button>
+                        {{else}}
+                          <span style="font-size: 11px; color: var(--text-secondary); font-style: italic;">Atanmış sanal makine yok</span>
+                        {{end}}
                       </div>
-                      {{end}}
-                    </div>
-                  {{else}}
-                    <div style="font-size: 13px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu vSwitch'e henüz bağlı bir fiziksel ağ kablosu portu yok.</div>
+                    {{end}}
+                  {{end}}
+                  {{if not $hasSegments}}
+                    <div style="font-size: 12px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu vSwitch'e bağlı herhangi bir Portgrup bulunamadı.</div>
                   {{end}}
                 </div>
-                
-              </div> <!-- End Topology -->
+              </div>
 
-            </div>
-          {{end}}
-        {{else}}
-          <div style="text-align: center; color: var(--text-secondary); padding: 40px; border: 1px dashed var(--border-color); border-radius: 8px;">
-            Sanal anahtar bulunamadı.
+              <!-- The Switch Backbone -->
+              <div style="width: 28px; background: linear-gradient(to bottom, var(--accent-color), var(--border-color)); border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center;">
+                <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 2px; text-transform: uppercase;">vSwitch</div>
+              </div>
+
+              <!-- Physical Adapters Side (Right) -->
+              <div style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; background-color: var(--bg-color); padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                  <h4 style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 0;">Fiziksel Portlar (Uplink)</h4>
+                  <button type="button" style="background: none; border: none; color: var(--accent-color); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline;" onclick="openAttachModal('{{.Name}}')">+ Port Ekle</button>
+                </div>
+                
+                {{if .Interfaces}}
+                  <div style="display: flex; flex-direction: column; gap: 8px;">
+                    {{range .Interfaces}}
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--success-color);">🔌</span>
+                        <span style="font-size: 13px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary);">{{.}}</span>
+                      </div>
+                      <button type="button" style="background: none; border: none; color: var(--danger-color); font-size: 11px; cursor: pointer;" hx-post="/api/network/uplinks/{{.}}/detach" hx-swap="none" hx-confirm="Adaptörü çıkarmak istediğinize emin misiniz?" onsubmit="setTimeout(function(){ htmx.trigger('body', 'uplinks-updated'); }, 500);">Bağlantıyı Kes</button>
+                    </div>
+                    {{end}}
+                  </div>
+                {{else}}
+                  <div style="font-size: 13px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 10px 0;">Bu vSwitch'e henüz bağlı bir fiziksel ağ kablosu portu yok.</div>
+                {{end}}
+              </div>
+              
+            </div> <!-- End Topology -->
+
           </div>
         {{end}}
-      </div>
+      {{else}}
+        <div style="text-align: center; color: var(--text-secondary); padding: 40px; border: 1px dashed var(--border-color); border-radius: 8px;">
+          Sanal anahtar bulunamadı.
+        </div>
+      {{end}}
     </div>
   </div>
 
-  <!-- Attach Modal -->
-  <div class="modal-overlay" id="attachModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-    <div class="modal" style="background-color: var(--card-bg); border-radius: var(--radius-card); padding: 32px; width: 100%; max-width: 400px;">
-      <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 16px; color: var(--text-primary);">Fiziksel Adaptör Bağla</h3>
-      <form hx-post="/api/network/uplinks/attach" hx-target="this" hx-swap="none" onsubmit="closeAttachModal(); setTimeout(function(){ htmx.trigger('body', 'uplinks-updated'); }, 500);">
-        <input type="hidden" id="attachVSwitchName" name="vswitch" value="">
-        
-        <div class="form-group" style="margin-bottom: 20px;">
-          <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">Boşta Olan Arayüzler</label>
-          <select id="availableInterfaces" name="iface" class="form-control" style="width: 100%; padding: 10px;">
-            <option value="">-- Arayüz Seçin --</option>
-            {{range .Uplinks}}
-              {{if eq .VSwitch ""}}
-                {{if .IsManagement}}
-                  <option value="{{.Name}}" disabled style="color: var(--text-secondary);">{{.Name}} (Yönetim Arayüzü - Seçilemez)</option>
-                {{else}}
-                  <option value="{{.Name}}">{{.Name}} ({{if .IsUp}}Aktif{{else}}Pasif{{end}})</option>
-                {{end}}
+  <!-- TAB 2: Physical NICs (Uplinks) -->
+  <div id="tab-uplinks-content" class="net-tab-content" style="display: none;">
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px;">
+      <h3 style="font-size: 15px; font-weight: 600; margin-top: 0; margin-bottom: 16px; color: var(--text-primary);">Sunucu Fiziksel Ağ Kartları (Physical NICs)</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--text-secondary);">
+            <th style="padding: 10px;">Arayüz Adı</th>
+            <th style="padding: 10px;">Durum</th>
+            <th style="padding: 10px;">MAC Adresi</th>
+            <th style="padding: 10px;">Mevcut IPv4 Adresi</th>
+            <th style="padding: 10px;">Bağlı vSwitch</th>
+            <th style="padding: 10px;">Yönetim</th>
+            <th style="padding: 10px; text-align: right;">İşlemler</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Uplinks}}
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <td style="padding: 12px 10px; font-family: var(--font-mono); font-weight: 600; color: var(--text-primary);">{{.Name}}</td>
+            <td style="padding: 12px 10px;">
+              {{if .IsUp}}
+                <span style="color: var(--success-color); font-weight: 600;">● Aktif (UP)</span>
+              {{else}}
+                <span style="color: var(--danger-color); font-weight: 600;">○ Pasif (DOWN)</span>
               {{end}}
+            </td>
+            <td style="padding: 12px 10px; font-family: var(--font-mono); color: var(--text-secondary);">{{.MacAddress}}</td>
+            <td style="padding: 12px 10px; font-family: var(--font-mono); color: var(--text-primary);">
+              {{if .IPAddress}}
+                <strong>{{.IPAddress}}</strong> <span style="font-size: 11px; color: var(--text-secondary);">({{.Netmask}})</span>
+              {{else}}
+                <span style="color: var(--warning-color); font-style: italic;">IP Almadı</span>
+              {{end}}
+            </td>
+            <td style="padding: 12px 10px;">
+              {{if .VSwitch}}
+                <span class="badge" style="background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--accent-color); padding: 2px 6px; border-radius: 4px;">{{.VSwitch}}</span>
+              {{else}}
+                <span style="color: var(--text-secondary); font-style: italic;">Bağlı Değil</span>
+              {{end}}
+            </td>
+            <td style="padding: 12px 10px;">
+              {{if .IsManagement}}
+                <span style="background-color: var(--accent-color); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">Yönetim Portu</span>
+              {{else}}
+                <span style="color: var(--text-secondary); font-size: 11px;">-</span>
+              {{end}}
+            </td>
+            <td style="padding: 12px 10px; text-align: right;">
+              <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;" onclick="renewDHCPForIface('{{.Name}}')">DHCP İsteği Gönder</button>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB 3: Management Network -->
+  <div id="tab-mgmt-content" class="net-tab-content" style="display: none;">
+    <div style="background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-card); padding: 24px; max-width: 650px;">
+      <h3 style="font-size: 15px; font-weight: 600; margin-top: 0; margin-bottom: 8px; color: var(--text-primary);">Sunucu Yönetim Arayüzü Yapılandırması (ESXi VMkernel)</h3>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">BizboxVirtual sunucunuzun arayüzüne erişim sağlayan IP adresini, DHCP veya Statik olarak buradan yapılandırabilirsiniz.</p>
+
+      <form id="mgmtIPForm" onsubmit="saveManagementIP(event)">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">Yönetim Ağ Kartı (Management Adapter)</label>
+          <select id="mgmtIfaceSelect" class="form-control" style="width: 100%; padding: 10px;">
+            {{range .Uplinks}}
+              <option value="{{.Name}}" {{if .IsManagement}}selected{{end}}>{{.Name}} (Mevcut: {{if .IPAddress}}{{.IPAddress}}{{else}}IP Yok{{end}})</option>
             {{end}}
           </select>
         </div>
 
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">IP Yapılandırma Modu</label>
+          <div style="display: flex; gap: 20px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="mgmtMode" value="dhcp" checked onclick="toggleStaticInputs(false)"> Otomatik IP (DHCP)
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="radio" name="mgmtMode" value="static" onclick="toggleStaticInputs(true)"> Statik IP
+            </label>
+          </div>
+        </div>
+
+        <div id="staticFieldsArea" style="display: none; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">IPv4 Adresi</label>
+            <input type="text" id="mgmtIPInput" class="form-control" placeholder="Örn: 192.168.1.111" style="width: 100%; padding: 8px;" value="{{.ManagementIP}}">
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">Ağ Maskesi (Subnet Mask)</label>
+            <input type="text" id="mgmtNetmaskInput" class="form-control" placeholder="Örn: 255.255.255.0" style="width: 100%; padding: 8px;" value="255.255.255.0">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">Varsayılan Ağ Geçidi (Gateway)</label>
+            <input type="text" id="mgmtGatewayInput" class="form-control" placeholder="Örn: 192.168.1.1" style="width: 100%; padding: 8px;">
+          </div>
+        </div>
+
         <div style="display: flex; justify-content: flex-end; gap: 12px;">
-          <button type="button" class="btn btn-secondary" onclick="closeAttachModal()">İptal</button>
-          <button type="submit" class="btn btn-primary">Bağla</button>
+          <button type="submit" class="btn btn-primary">Kaydet ve Ağ Ayarlarını Uygula</button>
         </div>
       </form>
     </div>
   </div>
 
-  <script>
-    function openAttachModal(vswitch) {
-      document.getElementById('attachVSwitchName').value = vswitch;
-      document.getElementById('attachModal').style.display = 'flex';
+</div>
+
+<!-- Attach Modal -->
+<div class="modal-overlay" id="attachModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+  <div class="modal" style="background-color: var(--card-bg); border-radius: var(--radius-card); padding: 32px; width: 100%; max-width: 400px;">
+    <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 16px; color: var(--text-primary);">Fiziksel Adaptör Bağla</h3>
+    <form hx-post="/api/network/uplinks/attach" hx-target="this" hx-swap="none" onsubmit="closeAttachModal(); setTimeout(function(){ htmx.trigger('body', 'uplinks-updated'); }, 500);">
+      <input type="hidden" id="attachVSwitchName" name="vswitch" value="">
+      
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary);">Boşta Olan Arayüzler</label>
+        <select id="availableInterfaces" name="iface" class="form-control" style="width: 100%; padding: 10px;">
+          <option value="">-- Arayüz Seçin --</option>
+          {{range .Uplinks}}
+            {{if eq .VSwitch ""}}
+              {{if .IsManagement}}
+                <option value="{{.Name}}" style="color: var(--text-primary);">{{.Name}} (Yönetim Arayüzü)</option>
+              {{else}}
+                <option value="{{.Name}}">{{.Name}} ({{if .IsUp}}Aktif{{else}}Pasif{{end}})</option>
+              {{end}}
+            {{end}}
+          {{end}}
+        </select>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 12px;">
+        <button type="button" class="btn btn-secondary" onclick="closeAttachModal()">İptal</button>
+        <button type="submit" class="btn btn-primary">Bağla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function switchUplinksSubTab(tabName) {
+    document.querySelectorAll('.net-tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.nav-subtab-btn').forEach(btn => {
+      btn.style.color = 'var(--text-secondary)';
+      btn.style.borderBottom = 'none';
+    });
+    
+    const activeBtn = document.getElementById('tab-' + tabName + '-btn');
+    const activeContent = document.getElementById('tab-' + tabName + '-content');
+    if (activeBtn && activeContent) {
+      activeBtn.style.color = 'var(--accent-color)';
+      activeBtn.style.borderBottom = '2px solid var(--accent-color)';
+      activeContent.style.display = 'block';
     }
-    function closeAttachModal() {
-      document.getElementById('attachModal').style.display = 'none';
+  }
+
+  function toggleStaticInputs(isStatic) {
+    document.getElementById('staticFieldsArea').style.display = isStatic ? 'block' : 'none';
+  }
+
+  function openAttachModal(vswitch) {
+    document.getElementById('attachVSwitchName').value = vswitch;
+    document.getElementById('attachModal').style.display = 'flex';
+  }
+  function closeAttachModal() {
+    document.getElementById('attachModal').style.display = 'none';
+  }
+  function createVSwitch() {
+    const name = prompt("Yeni sanal anahtar (vSwitch) adı girin:\n(Örn: vSwitch1)");
+    if (name) {
+      fetch('/api/network/vswitches', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'name=' + encodeURIComponent(name)
+      }).then(res => {
+        if(res.ok) htmx.trigger('body', 'uplinks-updated');
+        else res.text().then(t => alert("Hata: " + t));
+      });
     }
-    function createVSwitch() {
-      const name = prompt("Yeni sanal anahtar (vSwitch) adı girin:\n(Örn: vSwitch1)");
-      if (name) {
-        fetch('/api/network/vswitches', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'name=' + encodeURIComponent(name)
-        }).then(res => {
-          if(res.ok) htmx.trigger('body', 'uplinks-updated');
-          else res.text().then(t => alert("Hata: " + t));
-        });
-      }
+  }
+  function deleteVSwitch(name) {
+    if (confirm(`'${name}' sanal anahtarını silmek istediğinize emin misiniz?`)) {
+      fetch('/api/network/vswitches/' + name, {
+        method: 'DELETE'
+      }).then(res => {
+        if(res.ok) htmx.trigger('body', 'uplinks-updated');
+        else res.text().then(t => alert("Hata: " + t));
+      });
     }
-    function deleteVSwitch(name) {
-      if (confirm(`'${name}' sanal anahtarını silmek istediğinize emin misiniz?`)) {
-        fetch('/api/network/vswitches/' + name, {
-          method: 'DELETE'
-        }).then(res => {
-          if(res.ok) htmx.trigger('body', 'uplinks-updated');
-          else res.text().then(t => alert("Hata: " + t));
-        });
-      }
-    }
-  </script>
+  }
+
+  function renewDHCPForIface(iface) {
+    fetch('/api/network/uplinks/renew-dhcp', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'iface=' + encodeURIComponent(iface)
+    }).then(res => res.text()).then(msg => {
+      alert(msg);
+      htmx.trigger('body', 'uplinks-updated');
+    });
+  }
+
+  function renewDHCPAll() {
+    const iface = document.getElementById('mgmtIfaceSelect')?.value || 'enp0s3';
+    renewDHCPForIface(iface);
+  }
+
+  function saveManagementIP(e) {
+    e.preventDefault();
+    const iface = document.getElementById('mgmtIfaceSelect').value;
+    const mode = document.querySelector('input[name="mgmtMode"]:checked').value;
+    const ip = document.getElementById('mgmtIPInput').value;
+    const netmask = document.getElementById('mgmtNetmaskInput').value;
+    const gateway = document.getElementById('mgmtGatewayInput').value;
+
+    const body = new URLSearchParams();
+    body.append('iface', iface);
+    body.append('mode', mode);
+    body.append('ip', ip);
+    body.append('netmask', netmask);
+    body.append('gateway', gateway);
+
+    fetch('/api/network/management/configure-ip', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString()
+    }).then(res => res.text()).then(msg => {
+      alert(msg);
+      htmx.trigger('body', 'uplinks-updated');
+    });
+  }
+</script>

@@ -1238,6 +1238,8 @@ func main() {
 		mux.HandleFunc("DELETE /api/network/vswitches/{name}", handleDeleteVSwitch)
 		mux.HandleFunc("POST /api/network/uplinks/attach", handleAttachUplink)
 		mux.HandleFunc("POST /api/network/uplinks/{iface}/detach", handleDetachUplink)
+		mux.HandleFunc("POST /api/network/uplinks/renew-dhcp", handleRenewDHCP)
+		mux.HandleFunc("POST /api/network/management/configure-ip", handleConfigureManagementIP)
 
 		// Storage endpoints
 		mux.HandleFunc("GET /api/storage", handleGetStoragePage)
