@@ -40,7 +40,10 @@ mount --bind /dev     "$ROOTFS_DIR/dev"
 mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
 mount -t proc  proc   "$ROOTFS_DIR/proc"
 mount -t sysfs sysfs  "$ROOTFS_DIR/sys"
-cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
+cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+EOF
 touch "$ROOTFS_DIR/etc/modules" 2>/dev/null || true
 
 cleanup() {

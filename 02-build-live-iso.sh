@@ -45,7 +45,10 @@ if [ -z "$INITRD_PATH" ]; then
   mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
   mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
   mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
-  cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf" 2>/dev/null || true
+  cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+EOF
 
   # Check if update-initramfs exists, if not install initramfs-tools dynamically inside rootfs
   chroot "$ROOTFS_DIR" /bin/bash -c "
