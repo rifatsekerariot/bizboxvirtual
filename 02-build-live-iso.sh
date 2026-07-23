@@ -55,6 +55,7 @@ if [ -z "$INITRD_PATH" ]; then
   [ -c "$ROOTFS_DIR/dev/urandom" ] || mknod -m 666 "$ROOTFS_DIR/dev/urandom" c 1 9 2>/dev/null || true
   [ -c "$ROOTFS_DIR/dev/ptmx" ] || mknod -m 666 "$ROOTFS_DIR/dev/ptmx" c 5 2 2>/dev/null || true
 
+  rm -f "$ROOTFS_DIR/etc/resolv.conf"
   cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
 nameserver 8.8.8.8
 nameserver 1.1.1.1
