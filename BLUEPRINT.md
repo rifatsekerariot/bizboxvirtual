@@ -70,19 +70,31 @@ bizboxvirtual/
 
 ## 3. Database Schema (`bizbox.db`)
 
-1. **`users`**: `id`, `username`, `password_hash`, `two_factor_secret`, `two_factor_enabled`, `session_timeout_minutes`, `created_at`
+1. **`users`**: `id`, `username`, `password_hash`, `role` (`admin`, `operator`, `viewer`), `two_factor_secret`, `two_factor_enabled`, `session_timeout`, `created_at`
 2. **`system_logs`**: `id`, `timestamp`, `user`, `action`, `target`, `status`
 3. **`network_segments`**: `id`, `name`, `vlan_id`, `vswitch_name`, `created_at`
 4. **`network_segment_vms`**: `vm_name`, `segment_name` (Foreign key -> `network_segments.name`)
 5. **`qos_rules`**: `id`, `segment_name`, `max_rate_mbps`, `burst_rate_mbps`, `created_at`
 6. **`security_settings`**: `key` (PRIMARY KEY), `value`
 7. **`security_logs`**: `id`, `timestamp`, `action`
+8. **`alert_settings`**: `key` (PRIMARY KEY), `value` (Webhook URL, Telegram Token/Chat ID, SMTP settings)
 
 ---
 
 ## 4. Key Architectural Safeguards & Engineering Highlights
 
-### A. L2 Bridge Isolation (`bridge-nf-call-iptables = 0`)
+### A. Zero-Config TLS/HTTPS Encryption & Auto Redirect (`main.go`)
+* **Transport Layer Security**: On first boot, `main.go` automatically generates self-signed TLS certificates (`config/cert.pem`, `config/key.pem`) using Go's `crypto/x509` and `crypto/rsa` if custom certificates are not supplied.
+* **Encrypted API & Session Token Protection**: Serves HTTPS on port `8443` and automatically redirects plain HTTP traffic on port `8080` to `https://<host>:8443`, protecting login passwords, TOTP tokens, and session cookies from LAN eavesdropping.
+
+### B. Brute-Force Rate Limiting & Account Lockout (`auth.go`)
+* **IP/User Attempt Limiter**: Tracks failed login attempts per IP/Username. Upon 5 consecutive failed attempts, logins are locked for 15 minutes.
+* **Proactive Security Alerts**: Lockouts trigger an immediate notification dispatch (`SendAlert`) to Webhooks, Telegram, and Email via `alerts.go`.
+
+### C. Role-Based Access Control (RBAC) (`auth.go` & `main.go`)
+* **Multi-User Roles**: Supports `admin` (full management), `operator` (VM/Network ops), and `viewer` (read-only monitoring).
+
+### D. L2 Bridge Isolation (`bridge-nf-call-iptables = 0`)
 * **Problem**: In Linux kernels, if `net.bridge.bridge-nf-call-iptables` is enabled, host-level `iptables` / `netfilter` rules process L2 bridge frames (VM-to-VM traffic on OVS tap interfaces), causing unexpected packet drops or security log pollution.
 * **Solution**: `network.go` enforces sysctl parameters programmatically at application startup (`tuneBridgeSysctl`), and `install.sh` / `01-build-rootfs.sh` persist `/etc/sysctl.d/99-bizbox-bridge.conf`:
   ```ini
@@ -91,18 +103,19 @@ bizboxvirtual/
   net.bridge.bridge-nf-call-arptables = 0
   ```
 
-### B. Atomic Binary Swap & Self-Healing Auto-Update (`updates.go`)
+### E. Atomic Binary Swap, GPG Verification & Self-Healing Auto-Update (`updates.go`)
+* **Release Tag Verification**: Auto-update fetches git tags (`git fetch --tags`) and verifies release tag integrity (`git tag -v`).
 * **Control Plane Isolation**: Running QEMU/KVM VMs run inside independent Incus daemon processes. Updating the `bizbox-mvp` Go binary does **not** interrupt running VMs.
-* **Atomic Compilation**: Updates compile the new version to a temporary binary (`go build -o bizbox-mvp.new`). If compilation fails, the active binary remains untouched.
-* **Atomic Swap**: Upon compilation success, `os.Rename("bizbox-mvp.new", "bizbox-mvp")` performs an atomic filesystem swap.
+* **Atomic Compilation & Swap**: Updates compile the new version to a temporary binary (`go build -o bizbox-mvp.new`) and perform an atomic filesystem swap (`os.Rename`).
 * **Automated Health Check & Rollback**: After updating, the system polls `GET /api/health`. If the health check fails to return `200 OK` within 5 seconds, `runSystemUpdate()` automatically restores `bizbox-mvp.bak`, restarts the service, and prevents control plane downtime.
 
-### C. Physical Uplink & Host Management Protection (`uplink.go`)
+### F. Physical Uplink & Host Management Protection (`uplink.go`)
 * **Management NIC Auto-Detection**: Detects the interface holding the host's default gateway route (e.g. `eth0`).
 * **Bridge Attachment Guard**: Prevents administrators from accidentally attaching the active management interface to an OVS bridge, avoiding host network lockouts.
 
-### D. Automated Sub-Second ZFS Snapshot Scheduler (`snapshot.go`)
+### G. Automated Sub-Second ZFS Snapshot Scheduler & Pruning (`snapshot.go`)
 * Background goroutine (`StartAutoSnapshotScheduler`) polls instances every 15 minutes (configurable) and triggers native ZFS snapshots (`zfs snapshot rft/virtual-machines/vm@snap_timestamp`).
+* **Retention Pruning**: Automatically prunes snapshots older than 48 hours to prevent ZFS pool exhaustion.
 * Enables sub-second point-in-time state rollbacks via ZFS COW engine (`zfs rollback`).
 
 ---

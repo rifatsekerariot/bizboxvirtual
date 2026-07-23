@@ -1,13 +1,20 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"embed"
 	"encoding/json"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
+	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -1254,11 +1261,30 @@ func main() {
 		mux.HandleFunc("DELETE /api/storage/{pool}", handleDeleteDatastoreAPI)
 
 
-		fmt.Println("REST API sunucusu 0.0.0.0:8080 adresinde başlatılıyor...")
-		err := http.ListenAndServe("0.0.0.0:8080", AuthMiddleware(mux))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Hata: Sunucu başlatılamadı. Detay: %v\n", err)
-			os.Exit(1)
+		certPath := "config/cert.pem"
+		keyPath := "config/key.pem"
+		if err := ensureTLSCertificates(certPath, keyPath); err != nil {
+			log.Printf("[TLS] Sertifika hatası: %v. HTTP 8080 modunda başlatılıyor...", err)
+			fmt.Println("BizBox REST API sunucusu HTTP 0.0.0.0:8080 adresinde başlatılıyor...")
+			err = http.ListenAndServe("0.0.0.0:8080", AuthMiddleware(mux))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Hata: Sunucu başlatılamadı. Detay: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Println("BizBox REST API sunucusu HTTPS (TLS) https://0.0.0.0:8443 adresinde şifreli olarak başlatılıyor...")
+			// Start automatic HTTP -> HTTPS redirector on port 8080
+			go func() {
+				_ = http.ListenAndServe("0.0.0.0:8080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					hostParts := strings.Split(r.Host, ":")
+					http.Redirect(w, r, "https://"+hostParts[0]+":8443"+r.RequestURI, http.StatusMovedPermanently)
+				}))
+			}()
+			err = http.ListenAndServeTLS("0.0.0.0:8443", certPath, keyPath, AuthMiddleware(mux))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Hata: HTTPS sunucu başlatılamadı. Detay: %v\n", err)
+				os.Exit(1)
+			}
 		}
 		return
 	}
@@ -1619,5 +1645,57 @@ func handleDownloadDatabaseBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"bizbox_backup_%s.db\"", time.Now().Format("2006-01-02_150405")))
 	w.Header().Set("Content-Type", "application/x-sqlite3")
 	http.ServeFile(w, r, backupPath)
+}
+
+// ensureTLSCertificates automatically generates a self-signed TLS certificate if missing
+func ensureTLSCertificates(certPath, keyPath string) error {
+	if _, err := os.Stat(certPath); err == nil {
+		if _, err := os.Stat(keyPath); err == nil {
+			return nil // Certs already exist
+		}
+	}
+
+	_ = os.MkdirAll("config", 0755)
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject: pkix.Name{
+			Organization: []string{"BizBox Hypervisor Appliance"},
+			CommonName:   "bizbox-host",
+		},
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("0.0.0.0")},
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
+
+	certOut, err := os.Create(certPath)
+	if err != nil {
+		return err
+	}
+	_ = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	_ = certOut.Close()
+
+	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	_ = pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	_ = keyOut.Close()
+
+	log.Printf("[TLS] Kendinden imzalı SSL/TLS sertifikası oluşturuldu (%s, %s)", certPath, keyPath)
+	return nil
 }
 

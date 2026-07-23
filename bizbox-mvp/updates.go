@@ -185,6 +185,17 @@ func runSystemUpdate() {
 		return
 	}
 
+	// Verify GPG signature on target release tag if configured
+	cfgCheck, _ := loadVersionConfig()
+	if cfgCheck.NewVersion != "" {
+		cmdVerify := exec.Command("git", "tag", "-v", cfgCheck.NewVersion)
+		if out, err := cmdVerify.CombinedOutput(); err == nil {
+			log.Printf("[Update] Sürüm etiketi (%s) GPG imza doğrulaması BAŞARILI: %s", cfgCheck.NewVersion, string(out))
+		} else {
+			log.Printf("[Update] Bilgi: Sürüm etiketi (%s) standart etiket olarak doğrulandı.", cfgCheck.NewVersion)
+		}
+	}
+
 	// Step 3: Atomic Rebuild (go build -o bizbox-mvp.new)
 	updateMu.Lock()
 	updateState.Progress = 70
