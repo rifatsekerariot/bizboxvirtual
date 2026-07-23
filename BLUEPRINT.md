@@ -95,9 +95,17 @@ bizboxvirtual/
 * **Proactive Security Alerts**: Lockouts trigger an immediate notification dispatch (`SendAlert`) to Webhooks, Telegram, and Email via `alerts.go`.
 
 ### C. Role-Based Access Control (RBAC) (`auth.go` & `main.go`)
-* **Multi-User Roles**: Supports `admin` (full management), `operator` (VM/Network ops), and `viewer` (read-only monitoring).
+* **Multi-User Roles**: Supports `admin` (full management), `operator` (VM/Network ops), and `viewer` (read-only monitoring). Viewer roles are strictly blocked from write endpoints (`POST`, `PUT`, `DELETE`) and interactive root consoles.
 
-### D. L2 Bridge Isolation (`bridge-nf-call-iptables = 0`)
+### D. WebSocket Handshake Authentication & Lateral Movement Guard (`main.go`)
+* **Handshake Session Verification**: `handleConsoleWS` explicitly validates session tokens before upgrading HTTP connections to WebSockets (`upgrader.Upgrade`). Unauthenticated clients are rejected with `401 Unauthorized` before any interactive console session is established.
+* **RBAC Console Restriction**: `viewer` roles are prevented from establishing interactive terminal sessions to VMs (`403 Forbidden`).
+
+### E. Double-Layer CSRF Protection & SameSite Enforcement (`auth.go`)
+* **SameSite=Strict Cookie Enforcement**: Session cookies are configured with `SameSite=Strict`, `HttpOnly`, and `Secure` flags, preventing browsers from sending cookies on cross-site requests.
+* **Origin/Referer Validation**: State-modifying requests (`POST`, `PUT`, `DELETE`) verify `Origin` and `Referer` headers against the host server name, blocking cross-site request forgery attacks.
+
+### F. L2 Bridge Isolation (`bridge-nf-call-iptables = 0`)
 * **Problem**: In Linux kernels, if `net.bridge.bridge-nf-call-iptables` is enabled, host-level `iptables` / `netfilter` rules process L2 bridge frames (VM-to-VM traffic on OVS tap interfaces), causing unexpected packet drops or security log pollution.
 * **Solution**: `network.go` enforces sysctl parameters programmatically at application startup (`tuneBridgeSysctl`), and `install.sh` / `01-build-rootfs.sh` persist `/etc/sysctl.d/99-bizbox-bridge.conf`:
   ```ini

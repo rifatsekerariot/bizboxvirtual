@@ -1075,6 +1075,29 @@ func handleConsoleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Validate Session Token BEFORE WebSocket Upgrade
+	cookie, err := r.Cookie("session_token")
+	token := ""
+	if err == nil {
+		token = cookie.Value
+	} else {
+		token = r.URL.Query().Get("token")
+	}
+
+	user, valid := getSessionUser(token)
+	if !valid {
+		log.Printf("[Security] Yetkisiz WebSocket Konsol erişimi engellendi! (VM: %s, IP: %s)", vmName, r.RemoteAddr)
+		http.Error(w, "Unauthorized: Geçerli oturum gerekli", http.StatusUnauthorized)
+		return
+	}
+
+	// 2. Enforce RBAC: viewer role is forbidden from root console execution
+	if user.Role == "viewer" {
+		log.Printf("[Security] Viewer rolündeki kullanıcı konsol erişiminden engellendi! (User: %s)", user.Username)
+		http.Error(w, "Forbidden: Konsol erişim yetkiniz yok", http.StatusForbidden)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Console WS upgrade error: %v", err)

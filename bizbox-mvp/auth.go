@@ -178,7 +178,7 @@ func getSessionUser(token string) (User, bool) {
 	return data.User, true
 }
 
-// AuthMiddleware wraps protected handlers and checks for a valid session.
+// AuthMiddleware wraps protected handlers, enforces CSRF checks, and checks for a valid session & RBAC role.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Static files are exempt from auth checks
@@ -199,10 +199,40 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		_, valid := getSessionUser(cookie.Value)
+		user, valid := getSessionUser(cookie.Value)
 		if !valid {
 			handleUnauthorized(w, r)
 			return
+		}
+
+		// CSRF Protection: For state-modifying methods (POST, PUT, DELETE), verify Origin/Referer header matches Host
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+			origin := r.Header.Get("Origin")
+			referer := r.Header.Get("Referer")
+			reqHost := r.Host
+
+			if origin != "" {
+				if !strings.Contains(origin, reqHost) {
+					log.Printf("[CSRF] Çapraz kaynaklı isteği engellendi! (Origin: %s, Host: %s)", origin, reqHost)
+					http.Error(w, "Forbidden: CSRF güvenlik ihlali (Geçersiz Origin)", http.StatusForbidden)
+					return
+				}
+			} else if referer != "" {
+				if !strings.Contains(referer, reqHost) {
+					log.Printf("[CSRF] Çapraz kaynaklı isteği engellendi! (Referer: %s, Host: %s)", referer, reqHost)
+					http.Error(w, "Forbidden: CSRF güvenlik ihlali (Geçersiz Referer)", http.StatusForbidden)
+					return
+				}
+			}
+
+			// RBAC Enforcement: Viewer role is strictly prohibited from state mutations
+			if user.Role == "viewer" {
+				log.Printf("[RBAC] Viewer rolündeki kullanıcı yazma işlemini denedi: %s %s (User: %s)", r.Method, r.URL.Path, user.Username)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`<div class="alert alert-danger" style="padding:10px; background-color:rgba(220,38,38,0.1); color:var(--error-color); border-radius:4px; font-size:13px;">Erişim Engellendi: 'viewer' (Salt Okunur) rolündeki hesaplar sistem üzerinde değişiklik yapamaz.</div>`))
+				return
+			}
 		}
 
 		next.ServeHTTP(w, r)
