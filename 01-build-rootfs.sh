@@ -47,12 +47,17 @@ nameserver 1.1.1.1
 EOF
 touch "$ROOTFS_DIR/etc/modules" 2>/dev/null || true
 
+# Defensive check: ensure devpts is active on host
+mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null || true
+
 cleanup() {
   echo "Cleaning up chroot mounts..."
   umount -lf "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/dev"     2>/dev/null || true
   umount -lf "$ROOTFS_DIR/proc"    2>/dev/null || true
   umount -lf "$ROOTFS_DIR/sys"     2>/dev/null || true
+  # Ensure host /dev/pts remains mounted and active
+  mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null || true
 }
 trap cleanup EXIT
 

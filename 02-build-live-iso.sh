@@ -65,6 +65,7 @@ EOF
   umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
+  mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null || true
 
   INITRD_PATH=$(find_valid_file "$ROOTFS_DIR/boot/initrd.img-*")
   if [ -z "$INITRD_PATH" ]; then
