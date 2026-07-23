@@ -20,25 +20,56 @@ echo "====== [1/4] Preparing ISO tree ======"
 rm -rf "$ISO_TREE"
 mkdir -p "$ISO_TREE/casper" "$ISO_TREE/boot/grub"
 
-# Robust Kernel & Initrd resolution with automatic fallback generation
-KERNEL_PATH=$(ls "$ROOTFS_DIR"/boot/vmlinuz-* 2>/dev/null | sort -V | tail -n1 || true)
-INITRD_PATH=$(ls "$ROOTFS_DIR"/boot/initrd.img-* "$ROOTFS_DIR"/boot/initrd* 2>/dev/null | sort -V | tail -n1 || true)
+# Helper to find the newest existing, non-broken regular file matching a glob
+find_valid_file() {
+  for candidate in $(ls -1 $1 2>/dev/null | sort -rV); do
+    if [ -f "$candidate" ] && [ -s "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
-if [ -z "$KERNEL_PATH" ] || [ ! -f "$KERNEL_PATH" ]; then
+KERNEL_PATH=$(find_valid_file "$ROOTFS_DIR/boot/vmlinuz-*")
+INITRD_PATH=$(find_valid_file "$ROOTFS_DIR/boot/initrd.img-*")
+
+if [ -z "$KERNEL_PATH" ]; then
   echo "Hata: /boot/vmlinuz-* imajı bulunamadı!"
   exit 1
 fi
 
-if [ -z "$INITRD_PATH" ] || [ ! -f "$INITRD_PATH" ]; then
-  echo "Bilgi: initrd.img dosyası bulunamadı, chroot içinde update-initramfs çalıştırılıyor..."
+if [ -z "$INITRD_PATH" ]; then
+  echo "Bilgi: initrd.img dosyası bulunamadı, chroot ortamı hazırlanıyor ve initramfs derleniyor..."
   mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
   mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
   mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
-  chroot "$ROOTFS_DIR" /bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin update-initramfs -c -k all" || true
+  cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf" 2>/dev/null || true
+
+  # Check if update-initramfs exists, if not install initramfs-tools dynamically inside rootfs
+  chroot "$ROOTFS_DIR" /bin/bash -c "
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+    if ! command -v update-initramfs &>/dev/null; then
+      apt-get update -qq
+      apt-get install -y --no-install-recommends initramfs-tools
+    fi
+    update-initramfs -c -k all || update-initramfs -u -k all
+  " || true
+
   umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
-  INITRD_PATH=$(ls "$ROOTFS_DIR"/boot/initrd.img-* "$ROOTFS_DIR"/boot/initrd* 2>/dev/null | sort -V | tail -n1 || true)
+
+  INITRD_PATH=$(find_valid_file "$ROOTFS_DIR/boot/initrd.img-*")
+  if [ -z "$INITRD_PATH" ]; then
+    INITRD_PATH=$(find_valid_file "$ROOTFS_DIR/boot/initrd*")
+  fi
+fi
+
+if [ -z "$INITRD_PATH" ]; then
+  echo "Hata: initrd.img dosyası oluşturulamadı veya bulunamadı!"
+  exit 1
 fi
 
 echo "Kernel: $KERNEL_PATH"
