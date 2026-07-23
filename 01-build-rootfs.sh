@@ -132,6 +132,7 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
 "
 
 # Sudo sifresiz (kurulum surecinde gerekli)
+mkdir -p "$ROOTFS_DIR/etc/sudoers.d"
 echo "admin ALL=(ALL) NOPASSWD:ALL" > "$ROOTFS_DIR/etc/sudoers.d/admin"
 chmod 440 "$ROOTFS_DIR/etc/sudoers.d/admin"
 
@@ -144,6 +145,7 @@ net.bridge.bridge-nf-call-arptables = 0
 SYSCTL
 
 # Persistent ESXi/Proxmox Style TTY Console Banner
+mkdir -p "$ROOTFS_DIR/usr/local/bin"
 cat <<'BANNER_SCRIPT' > "$ROOTFS_DIR/usr/local/bin/bizbox-refresh-banner.sh"
 #!/bin/bash
 IPS=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | tr '\n' ' ')
