@@ -48,18 +48,19 @@ bizboxvirtual/
     ├── storage.go          # Raw block device discovery (lsblk), zpool formatting, Incus storage pool registration
     ├── qos.go              # Traffic shaping, OpenFlow queue allocation, bandwidth limits
     ├── security.go         # eBPF/XDP DDoS protection service controller & security event logger
-    ├── snapshot.go         # Automatic ZFS snapshot scheduler (15-min cron), snapshot timeline, 1-click rollback
-    ├── updates.go          # Zero-downtime auto-update manager (Git pull, atomic build, health check, rollback)
+    ├── alerts.go           # Proactive alerting subsystem (Webhooks, Telegram Bot API, SMTP Email)
+    ├── snapshot.go         # Automatic ZFS snapshot scheduler (15-min cron), retention pruning, 1-click rollback
+    ├── updates.go          # Zero-downtime auto-update manager (Git pull, release tags, atomic build, health check, rollback)
     ├── install.sh          # Node installer script for direct Linux bare-metal deployment
     ├── templates/          # Embedded HTML templates (HTMX partial fragments)
     │   ├── layout.html     # Base SPA layout shell
-    │   ├── dashboard.html  # System resource gauges, instance list, audit logs
+    │   ├── dashboard.html  # System resource gauges, SVG sparkline metrics chart, audit logs
     │   ├── vm-detail.html  # VM detail tabs (General, Hardware, Snapshots timeline, Console)
     │   ├── storage.html    # Datastores & Unused Raw Disks manager
     │   ├── uplinks.html    # Physical NICs, vSwitch bindings & IP configuration
     │   ├── network.html    # OVS Portgroups & VLAN segment manager
     │   ├── security.html   # eBPF/XDP DDoS protection toggle & security audit trail
-    │   └── settings.html   # Admin credentials, session timeout, 2FA MFA setup, System Update card
+    │   └── settings.html   # Admin credentials, 2FA setup, Database Backup, Alert Settings, Update card
     └── static/
         ├── app.js          # HTMX event listeners, WebSocket terminal proxy, modal dialog handlers
         └── style.css       # Custom CSS design system (dark theme, glassmorphism, micro-animations)

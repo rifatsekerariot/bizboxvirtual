@@ -20,6 +20,7 @@ type User struct {
 	ID               int
 	Username         string
 	PasswordHash     string
+	Role             string // "admin", "operator", "viewer"
 	CreatedAt        time.Time
 	SessionTimeout   string
 	TwoFactorEnabled bool
@@ -32,10 +33,17 @@ type SessionData struct {
 	ExpiresAt time.Time
 }
 
+type LoginAttempt struct {
+	Count       int
+	LockedUntil time.Time
+}
+
 var (
-	db           *sql.DB
-	sessionStore = make(map[string]SessionData)
-	sessionMu    sync.RWMutex
+	db            *sql.DB
+	sessionStore  = make(map[string]SessionData)
+	sessionMu     sync.RWMutex
+	loginAttempts = make(map[string]*LoginAttempt)
+	attemptMu     sync.Mutex
 )
 
 // InitDB initializes the SQLite database and creates the users table if it doesn't exist.
@@ -57,6 +65,9 @@ func InitDB() {
 	if err != nil {
 		log.Fatalf("Tablo oluşturma hatası: %v", err)
 	}
+
+	// Schema migrations for users table
+	_, _ = db.Exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'")
 
 	queryLogs := `
 	CREATE TABLE IF NOT EXISTS system_logs (
@@ -217,29 +228,34 @@ func handleGetLogin(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "login.html", nil)
 }
 
-// getUserFromDB retrieves user details including settings
+// getUserFromDB retrieves user details including settings and role
 func getUserFromDB(username string) (User, error) {
 	var user User
 	var createdAtStr string
 	var sessionTimeout sql.NullString
 	var twoFactorEnabled sql.NullInt64
 	var twoFactorSecret sql.NullString
+	var role sql.NullString
 
-	// Try with all columns first
-	err := db.QueryRow("SELECT id, username, password_hash, created_at, session_timeout, two_factor_enabled, two_factor_secret FROM users WHERE username = ?", username).
-		Scan(&user.ID, &user.Username, &user.PasswordHash, &createdAtStr, &sessionTimeout, &twoFactorEnabled, &twoFactorSecret)
-	
+	err := db.QueryRow("SELECT id, username, password_hash, role, created_at, session_timeout, two_factor_enabled, two_factor_secret FROM users WHERE username = ?", username).
+		Scan(&user.ID, &user.Username, &user.PasswordHash, &role, &createdAtStr, &sessionTimeout, &twoFactorEnabled, &twoFactorSecret)
+
 	if err != nil {
-		// Fallback to original columns if the settings columns are not in this test DB schema
 		err = db.QueryRow("SELECT id, username, password_hash, created_at FROM users WHERE username = ?", username).
 			Scan(&user.ID, &user.Username, &user.PasswordHash, &createdAtStr)
 		if err != nil {
 			return User{}, err
 		}
+		user.Role = "admin"
 		user.SessionTimeout = "24h"
 		user.TwoFactorEnabled = false
 		user.TwoFactorSecret = ""
 	} else {
+		if role.Valid && role.String != "" {
+			user.Role = role.String
+		} else {
+			user.Role = "admin"
+		}
 		if sessionTimeout.Valid {
 			user.SessionTimeout = sessionTimeout.String
 		} else {
@@ -262,23 +278,53 @@ func getUserFromDB(username string) (User, error) {
 	return user, nil
 }
 
-// handlePostLogin authenticates the user and sets a session cookie.
+// handlePostLogin authenticates the user with brute-force protection and sets a session cookie.
 func handlePostLogin(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	twoFactorCode := r.FormValue("two_factor_code")
 
+	attemptKey := r.RemoteAddr + ":" + username
+	attemptMu.Lock()
+	attempt, exists := loginAttempts[attemptKey]
+	if exists && time.Now().Before(attempt.LockedUntil) {
+		attemptMu.Unlock()
+		data := struct {
+			Error    string
+			Show2FA  bool
+			Username string
+			Password string
+		}{
+			Error: "Çok sayıda hatalı giriş denemesi. Hesabınız 15 dakika boyunca kilitlendi.",
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusTooManyRequests)
+		templates.ExecuteTemplate(w, "login.html", data)
+		return
+	}
+	attemptMu.Unlock()
+
 	user, err := getUserFromDB(username)
 	var valid bool
 	if err == nil {
-		// Compare password hash
 		if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) == nil {
 			valid = true
 		}
 	}
 
 	if !valid {
-		// Security: Keep error messages identical for username and password mismatches
+		attemptMu.Lock()
+		if !exists {
+			attempt = &LoginAttempt{Count: 0}
+			loginAttempts[attemptKey] = attempt
+		}
+		attempt.Count++
+		if attempt.Count >= 5 {
+			attempt.LockedUntil = time.Now().Add(15 * time.Minute)
+			SendAlert("warning", "Brute-force Giriş Uyarısı", fmt.Sprintf("%s IP adresinden '%s' kullanıcısı için 5 kez üst üste hatalı giriş yapıldı. Hesap 15 dakika kilitlendi.", r.RemoteAddr, username))
+		}
+		attemptMu.Unlock()
+
 		data := struct {
 			Error    string
 			Show2FA  bool
@@ -287,6 +333,16 @@ func handlePostLogin(w http.ResponseWriter, r *http.Request) {
 		}{
 			Error: "Kullanıcı adı veya şifre hatalı",
 		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		templates.ExecuteTemplate(w, "login.html", data)
+		return
+	}
+
+	// Login successful: reset failed attempt counter
+	attemptMu.Lock()
+	delete(loginAttempts, attemptKey)
+	attemptMu.Unlock()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		templates.ExecuteTemplate(w, "login.html", data)

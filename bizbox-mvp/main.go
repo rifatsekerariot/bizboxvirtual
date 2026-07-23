@@ -1164,9 +1164,11 @@ func main() {
 		InitQosDB()
 		InitSecurityDB()
 		InitSettingsDB()
+		InitAlertsDB()
 
-		// Start ZFS auto-snapshot scheduler
+		// Start ZFS auto-snapshot scheduler and metrics collector
 		StartAutoSnapshotScheduler()
+		StartMetricsCollector()
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /", handleIndex)
@@ -1219,12 +1221,16 @@ func main() {
 		mux.HandleFunc("POST /api/security/toggle", handleToggleSecurity)
 		mux.HandleFunc("GET /api/security/page", handleGetSecurityPage)
 
-		// Settings endpoints
+		// Settings & Alert endpoints
 		mux.HandleFunc("GET /api/settings/page", handleGetSettingsPage)
 		mux.HandleFunc("POST /api/settings/password", handlePostSettingsPassword)
 		mux.HandleFunc("POST /api/settings/session", handlePostSettingsSession)
 		mux.HandleFunc("POST /api/settings/2fa/enable", handlePostSettings2FAEnable)
 		mux.HandleFunc("POST /api/settings/2fa/disable", handlePostSettings2FADisable)
+		mux.HandleFunc("POST /api/alerts/settings", handlePostAlertSettings)
+		mux.HandleFunc("POST /api/alerts/test", handlePostAlertTest)
+		mux.HandleFunc("GET /api/settings/backup/download", handleDownloadDatabaseBackup)
+		mux.HandleFunc("GET /api/metrics/history", handleGetMetricsHistory)
 
 		// System Updates endpoints
 		mux.HandleFunc("GET /api/health", handleHealthCheck)
@@ -1542,5 +1548,76 @@ func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+type MetricPoint struct {
+	Timestamp string `json:"timestamp"`
+	CPU       int    `json:"cpu"`
+	RAM       int    `json:"ram"`
+	Disk      int    `json:"disk"`
+}
+
+var (
+	metricsHistory  []MetricPoint
+	metricsMu       sync.RWMutex
+	maxMetricPoints = 30
+)
+
+func StartMetricsCollector() {
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		for range ticker.C {
+			ramPct, _, _ := getHostMemoryUsage()
+			diskPct, _, _ := getHostDiskUsage()
+			cpuPct := 5
+			if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+				var load float64
+				fmt.Sscanf(string(data), "%f", &load)
+				cpuPct = int(load * 25)
+				if cpuPct > 100 {
+					cpuPct = 100
+				}
+			}
+
+			point := MetricPoint{
+				Timestamp: time.Now().Format("15:04:05"),
+				CPU:       cpuPct,
+				RAM:       ramPct,
+				Disk:      diskPct,
+			}
+
+			metricsMu.Lock()
+			metricsHistory = append(metricsHistory, point)
+			if len(metricsHistory) > maxMetricPoints {
+				metricsHistory = metricsHistory[1:]
+			}
+			metricsMu.Unlock()
+		}
+	}()
+}
+
+func handleGetMetricsHistory(w http.ResponseWriter, r *http.Request) {
+	metricsMu.RLock()
+	defer metricsMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if metricsHistory == nil {
+		metricsHistory = []MetricPoint{}
+	}
+	json.NewEncoder(w).Encode(metricsHistory)
+}
+
+func handleDownloadDatabaseBackup(w http.ResponseWriter, r *http.Request) {
+	backupPath := fmt.Sprintf("/tmp/bizbox_backup_%d.db", time.Now().Unix())
+	cmd := exec.Command("sqlite3", "bizbox.db", fmt.Sprintf(".backup %s", backupPath))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		http.Error(w, fmt.Sprintf("Veritabanı yedeği alınamadı: %v (%s)", err, string(out)), http.StatusInternalServerError)
+		return
+	}
+	defer os.Remove(backupPath)
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"bizbox_backup_%s.db\"", time.Now().Format("2006-01-02_150405")))
+	w.Header().Set("Content-Type", "application/x-sqlite3")
+	http.ServeFile(w, r, backupPath)
 }
 

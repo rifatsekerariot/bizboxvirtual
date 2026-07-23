@@ -166,12 +166,13 @@ func runSystemUpdate() {
 	// Backup current binary for instant atomic rollback
 	_ = exec.Command("cp", "bizbox-mvp", "bizbox-mvp.bak").Run()
 
-	// Step 2: Fetch updates (Git pull)
+	// Step 2: Fetch updates & Release tags (Git pull & tags fetch)
 	updateMu.Lock()
 	updateState.Progress = 40
-	updateState.Message = "Adım 2/4: Yeni sürüm paketleri indiriliyor (git pull)..."
+	updateState.Message = "Adım 2/4: Sürüm etiketleri ve güncellemeler çekiliyor (git fetch & pull)..."
 	updateMu.Unlock()
 
+	_ = exec.Command("git", "fetch", "--tags").Run()
 	cmdPull := exec.Command("git", "pull")
 	if out, err := cmdPull.CombinedOutput(); err != nil {
 		updateMu.Lock()
@@ -180,6 +181,7 @@ func runSystemUpdate() {
 		updateState.Message = "Güncelleme başarısız! Paketler indirilemedi."
 		updateState.ErrorMsg = fmt.Sprintf("Git güncelleme hatası: %v. Detay: %s", err, string(out))
 		updateMu.Unlock()
+		SendAlert("error", "Güncelleme Hatası", fmt.Sprintf("Paketler git pull ile indirilemedi: %v", err))
 		return
 	}
 
