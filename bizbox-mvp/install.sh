@@ -31,6 +31,76 @@ while true; do
   fi
 done
 
+# 1.2 Interactive Static IP & Management NIC Setup
+echo ""
+echo "========================================================"
+echo "      Hipervizör Statik Ağ (IP) Yapılandırması        "
+echo "========================================================"
+
+ETH_INTERFACES=$(ip -o link show | awk -F': ' '{print $2}' | grep -v -E '^(lo|virbr|br-|docker|veth|tap|tun|ovs)')
+DEFAULT_IFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+
+if [ -z "$DEFAULT_IFACE" ]; then
+  DEFAULT_IFACE=$(echo "$ETH_INTERFACES" | head -n1)
+fi
+
+echo "Tespit edilen fiziksel ağ kartları:"
+echo "$ETH_INTERFACES"
+echo ""
+read -p "Yönetim (Management) ağ kartı seçin [Varsayılan: $DEFAULT_IFACE]: " SELECTED_IFACE
+SELECTED_IFACE=${SELECTED_IFACE:-$DEFAULT_IFACE}
+
+echo ""
+echo "Ağ Yapılandırma Tipi:"
+echo " 1) Statik IP Adresi (Önerilen - Hipervizör için Sabit IP)"
+echo " 2) DHCP (Dinamik IP)"
+read -p "Seçiminiz (1 veya 2) [Varsayılan: 1]: " NET_CHOICE
+NET_CHOICE=${NET_CHOICE:-1}
+
+if [ "$NET_CHOICE" = "1" ]; then
+  CURR_IP=$(ip -4 addr show dev $SELECTED_IFACE 2>/dev/null | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
+  CURR_GW=$(ip route | grep default | awk '{print $3}' | head -n1)
+  
+  read -p "Statik IP Adresi [Ör: 192.168.1.100] ${CURR_IP:+(Mevcut: $CURR_IP)}: " STATIC_IP
+  STATIC_IP=${STATIC_IP:-$CURR_IP}
+  
+  read -p "CIDR Alt Ağ Prefiksi (örn: 24 = 255.255.255.0) [Varsayılan: 24]: " PREFIX
+  PREFIX=${PREFIX:-24}
+  if [ "$PREFIX" = "255.255.255.0" ]; then PREFIX="24"; fi
+  
+  read -p "Varsayılan Ağ Geçidi (Gateway) ${CURR_GW:+(Mevcut: $CURR_GW)}: " GATEWAY_IP
+  GATEWAY_IP=${GATEWAY_IP:-$CURR_GW}
+  
+  read -p "DNS Sunucuları [Varsayılan: 8.8.8.8, 1.1.1.1]: " DNS_SERVERS
+  DNS_SERVERS=${DNS_SERVERS:-"8.8.8.8, 1.1.1.1"}
+
+  mkdir -p /etc/netplan
+  rm -f /etc/netplan/*bizbox*.yaml 2>/dev/null || true
+  
+  cat <<NETPLAN > /etc/netplan/01-bizbox-static.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${SELECTED_IFACE}:
+      dhcp4: false
+      dhcp6: false
+      addresses:
+        - ${STATIC_IP}/${PREFIX}
+      routes:
+        - to: default
+          via: ${GATEWAY_IP}
+      nameservers:
+        addresses: [${DNS_SERVERS}]
+NETPLAN
+  chmod 600 /etc/netplan/01-bizbox-static.yaml
+  echo "Netplan statik IP yapılandırması uygulanıyor..."
+  netplan apply || true
+  echo "Hipervizör Statik IP adresi sabitlendi: ${STATIC_IP}/${PREFIX}"
+else
+  echo "DHCP ağ yapılandırması seçildi."
+fi
+
 # 2. Add Zabbly repository for Incus (Fixes OVS JSON-RPC bugs)
 echo "Adding Zabbly repository for Incus..."
 mkdir -p /etc/apt/keyrings/
