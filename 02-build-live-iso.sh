@@ -42,10 +42,12 @@ fi
 
 if [ -z "$INITRD_PATH" ]; then
   echo "Bilgi: initrd.img dosyası bulunamadı, chroot ortamı hazırlanıyor ve initramfs derleniyor..."
-  mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
+  mkdir -p "$ROOTFS_DIR/dev/pts" "$ROOTFS_DIR/proc" "$ROOTFS_DIR/sys" "$ROOTFS_DIR/etc"
+  mount -t devtmpfs devtmpfs "$ROOTFS_DIR/dev" 2>/dev/null || mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
+  mount -t devpts devpts "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
   mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
   mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
-  mkdir -p "$ROOTFS_DIR/etc"
+
   cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
 nameserver 8.8.8.8
 nameserver 1.1.1.1
@@ -62,10 +64,10 @@ EOF
     update-initramfs -c -k all || update-initramfs -u -k all
   " || true
 
+  umount -lf "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
-  mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null || true
 
   INITRD_PATH=$(find_valid_file "$ROOTFS_DIR/boot/initrd.img-*")
   if [ -z "$INITRD_PATH" ]; then

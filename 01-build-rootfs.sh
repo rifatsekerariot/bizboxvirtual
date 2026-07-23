@@ -34,21 +34,19 @@ rm -rf "$ROOTFS_DIR"
 debootstrap --arch=amd64 --variant=minbase "$RELEASE" "$ROOTFS_DIR" "$MIRROR"
 
 # ---------------------------------------------------------------------------
-# Prepare chroot (bind mounts)
+# Prepare chroot (isolated virtual mounts - never bind host /dev)
 # ---------------------------------------------------------------------------
-mount --bind /dev     "$ROOTFS_DIR/dev"
-mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
-mount -t proc  proc   "$ROOTFS_DIR/proc"
-mount -t sysfs sysfs  "$ROOTFS_DIR/sys"
-mkdir -p "$ROOTFS_DIR/etc"
+mkdir -p "$ROOTFS_DIR/dev/pts" "$ROOTFS_DIR/proc" "$ROOTFS_DIR/sys" "$ROOTFS_DIR/etc"
+mount -t devtmpfs devtmpfs "$ROOTFS_DIR/dev" 2>/dev/null || mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
+mount -t devpts devpts "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
+mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
+mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
+
 cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
 nameserver 8.8.8.8
 nameserver 1.1.1.1
 EOF
 touch "$ROOTFS_DIR/etc/modules" 2>/dev/null || true
-
-# Defensive check: ensure devpts is active on host
-mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null || true
 
 cleanup() {
   echo "Cleaning up chroot mounts..."
@@ -56,8 +54,6 @@ cleanup() {
   umount -lf "$ROOTFS_DIR/dev"     2>/dev/null || true
   umount -lf "$ROOTFS_DIR/proc"    2>/dev/null || true
   umount -lf "$ROOTFS_DIR/sys"     2>/dev/null || true
-  # Ensure host /dev/pts remains mounted and active
-  mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts 2>/dev/null || true
 }
 trap cleanup EXIT
 
