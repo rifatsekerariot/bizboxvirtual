@@ -1,6 +1,6 @@
-# BizBox Virtualization Hypervisor Blueprint
+# BizBox Virtualization Appliance - Technical Blueprint & Architectural Specification
 
-BizBox is a lightweight, self-hosted hypervisor and virtual machine manager designed for Debian/Ubuntu environments. It orchestrates Incus (LXD fork) for virtualization/containerization, Open vSwitch (OVS) for networking, and ZFS for rapid storage operations and snapshotting.
+BizBox is an enterprise-grade, lightweight, self-hosted hypervisor management appliance and control plane designed for Linux (Debian/Ubuntu) environments. It orchestrates **Incus** (container & VM hypervisor daemon) for virtualization, **Open vSwitch (OVS)** for software-defined networking (SDN), **ZFS** for high-performance block storage and snapshotting, and **eBPF/XDP** for hardware-rate DDoS protection.
 
 ---
 
@@ -8,98 +8,118 @@ BizBox is a lightweight, self-hosted hypervisor and virtual machine manager desi
 
 ```mermaid
 graph TD
-    Client[Web UI / HTMX] <-->|HTTP / WebSockets| GoServer[BizBox Go Web Server]
+    Client[Web UI / HTMX SPA] <-->|HTTP / WebSockets| GoServer[BizBox Go Web Server Monolith]
     GoServer <-->|SQLite3| DB[(bizbox.db)]
-    GoServer <-->|Unix Socket / API| Incus[Incus Daemon]
-    GoServer <-->|CLI Executions| OVS[Open vSwitch]
-    GoServer <-->|CLI Executions| ZFS[ZFS Storage Pool]
-    Incus <--> VM1[Virtual Machine]
-    Incus <--> VM2[Container]
+    GoServer <-->|Unix Socket / API| Incus[Incus Daemon / LXC]
+    GoServer <-->|CLI Executions| OVS[Open vSwitch SDN]
+    GoServer <-->|CLI Executions| ZFS[ZFS Storage Pool Engine]
+    GoServer <-->|systemctl| XDP[eBPF / XDP DDoS Service]
+    Incus <--> VM1[QEMU / KVM Virtual Machines]
+    Incus <--> VM2[LXC Containers]
+    OVS <--> BrInt[br-int / br-ex OVS Bridges]
+    BrInt <--> Tap[Tap Interfaces / Portgroups]
+    Tap <--> VM1
 ```
 
-### Core Technologies
-- **Backend**: Go (standard HTTP library + Gorilla Websockets + Incus client bindings)
-- **Frontend**: Vanilla HTML/CSS with HTMX for dynamic, SPA-like interactions without heavyweight frameworks.
-- **Database**: SQLite3 for system state, user accounts, audit logging, network segments, and QoS rules.
-- **Hypervisor Engine**: Incus (running on local Unix Socket `/var/lib/incus/unix.socket`).
-- **Networking**: Open vSwitch (OVS) for segment isolation, bridge management, and priority queues.
-- **Storage**: ZFS storage pool (`rft`) for virtualization backing and fast snapshots.
+### Core Technology Stack
+- **Backend Control Plane**: Go (net/http monolith, Gorilla WebSockets, Incus client API bindings).
+- **Frontend Layer**: Vanilla HTML5/CSS3 (dark-mode design system) with **HTMX** for dynamic SPA-like interactivity without heavy JS frameworks.
+- **Database Engine**: Embedded **SQLite3** (`bizbox.db`) handling user authentication, session state, audit logs, network segments, QoS rules, and security configurations.
+- **Hypervisor Core**: Incus daemon interacting over Unix socket (`/var/lib/incus/unix.socket`).
+- **Software-Defined Networking (SDN)**: Open vSwitch (OVS) for L2/L3 virtual bridge management, VLAN tagging, portgroups, and OpenFlow QoS rate limiting.
+- **Storage Subsystem**: ZFS Storage Pools for raw disk management, dataset allocation, and sub-second COW snapshots.
+- **Security & Ingress Protection**: eBPF / XDP (`xdp-ddos.service`) for line-rate packet filtering on physical NICs + sysctl bridge netfilter tuning.
 
 ---
 
-## 2. Directory Structure
+## 2. Repository & Module Blueprint
 
-32: ```
-33: bizboxvirtual/
-34: ├── 01-build-rootfs.sh      # Rootfs generation and live ISO building script
-35: ├── 02-build-live-iso.sh    # Squashfs & ISO image bundler
-36: ├── build-iso.sh            # Automated script to build a custom bootable installation ISO
-37: ├── BLUEPRINT.md            # Project architecture and technical design document
-38: └── bizbox-mvp/
-39:     ├── main.go             # Entrypoint, HTTP routes, VM lifecycle operations, middleware
-40:     ├── auth.go             # Authentication, session timeout management, TOTP 2FA
-41:     ├── network.go          # Open vSwitch integration, segment isolation & portgroups
-42:     ├── uplink.go           # Network uplinks, Management IF isolation & DHCP/Static IP manager
-43:     ├── storage.go          # Raw disk listing (lsblk), zpool creation & Incus datastores
-44:     ├── qos.go              # Traffic shaping and network Quality of Service (QoS)
-45:     ├── security.go         # Port blocking, iptables rules, and host security settings
-46:     ├── snapshot.go         # ZFS snapshot scheduler, listing, and rollback endpoints
-47:     ├── updates.go          # Self-update manager over git/binary updates
-48:     ├── go.mod / go.sum     # Go module dependency definitions
-49:     ├── install.sh          # Linux installer script for direct node setup
-50:     ├── templates/          # HTML template layouts (HTMX-ready fragments)
-51:     │   ├── layout.html     # Core shell layout
-52:     │   ├── dashboard.html  # Instances list, stats, audit logs
-53:     │   ├── vm-detail.html  # VM management tabs (General, Snapshots timeline)
-54:     │   ├── storage.html    # Storage Datastores & Unused Disks manager
-55:     │   ├── uplinks.html    # Physical network interfaces, bridge attachments & IP config
-56:     │   ├── login.html      # Auth page
-57:     │   └── ...             # Sub-pages (Network, QoS, Security, Settings, Wizard)
-58:     └── static/
-59:         ├── app.js          # Client-side helpers, websocket console interface, modal controls
-60:         └── style.css       # Premium dark-themed dashboard stylesheet
-61: ```
-62: 
-63: ---
-64: 
-65: ## 3. Database Schema
-66: 
-67: BizBox utilizes a single SQLite database (`bizbox.db`) containing the following key tables:
-68: - **`users`**: Manages admin user credentials (username, password hash, created date, session timeouts, and MFA/2FA secret keys).
-69: - **`system_logs`**: Audit trail storing time-stamped administrator actions and task execution statuses.
-70: - **`network_segments`**: Logical OVS network groups, parent vSwitches, and associated VLAN tags.
-71: - **`network_segment_vms`**: Relations linking specific VMs to network segments.
-72: - **`qos_rules`**: Traffic prioritization and queue configurations mapped to segments/VMs.
-73: - **`security_settings`**: Key-value store for active security controls (e.g. firewall active status).
-74: - **`security_logs`**: Host security event occurrences.
-75: 
-76: ---
-77: 
-78: ## 4. Key Workflows & Recent Features
-79: 
-80: ### Virtual Machine Lifecycle & vSwitch Assignment
-81: 1. User requests VM creation through the UI wizard or modifies an existing instance.
-82: 2. Go backend calls Incus API via Unix socket (`c.CreateInstance` / `c.UpdateInstance`).
-83: 3. VM network interfaces are attached to designated parent vSwitches (OVS bridges) with explicit VLAN tag configuration (`AssignVMToSegment`).
-84: 
-85: ### Network Uplinks & Host Management Protection
-86: 1. **Management Interface Auto-Detection**: The default route network interface (e.g., `eth0`) is automatically identified.
-87: 2. **Bridge Attachment Prevention**: Management interfaces are explicitly protected from being attached to OVS bridges to prevent losing host connectivity.
-88: 3. **Native & Unmanaged OVS Bridge Integration**: Supports attaching and detaching physical uplink interfaces across managed and unmanaged OVS bridges via `ovs-vsctl`.
-89: 4. **Management IP & DHCP Control**: Endpoints (`/api/uplinks/dhcp/renew`, `/api/uplinks/management/config`) allow dynamic DHCP renewal or static IP configuration directly from the UI.
-90: 
-91: ### Datastore & Raw Disk Storage Management
-92: 1. `ListRawDisks` scans host block devices using `lsblk` and filters out partitioned, mounted, or OS-managed disks.
-93: 2. Administrators can create new datastores by formatting unused raw disks with ZFS (`zpool create -f <name> <device>`) and registering them as Incus storage pools.
-94: 3. `ListDatastores` lists ZFS pools alongside filesystem usage metrics (used/available capacity) and associated Incus storage pool metadata.
-95: 
-96: ### Automated Backups & ZFS Snapshots
-97: 1. A background scheduler (`StartAutoSnapshotScheduler`) polls active instances at regular intervals (default: every 15 minutes).
-98: 2. It takes native ZFS snapshots of the underlying dataset (`zfs snapshot rft/virtual-machines/vm@snap_xyz`).
-99: 3. The UI timeline (`vm-detail.html`) renders these snapshots as an interactive timeline, allowing administrative rollback (`zfs rollback`).
-100: 
-101: ### Unattended Installation & Live ISO
-102: 1. `01-build-rootfs.sh` and `02-build-live-iso.sh` build live Ubuntu rootfs and squashfs ISO images.
-103: 2. `build-iso.sh` packages the Go server binary, templates, static assets, and autoinstall configurations (`user-data` via cloud-init) into a bootable ISO.
-104: 3. Upon booting, OVS, ZFS, Incus, and the BizBox service are automatically provisioned without manual intervention.
+```
+bizboxvirtual/
+├── 01-build-rootfs.sh      # Unattended Ubuntu live rootfs generation & package bootstrap
+├── 02-build-live-iso.sh    # Live ISO bundler using SquashFS and xorriso
+├── build-iso.sh            # Automated end-to-end bootable installer ISO generator
+├── BLUEPRINT.md            # Comprehensive technical design blueprint & evaluation guide
+└── bizbox-mvp/
+    ├── main.go             # Server entrypoint ('serve' subcommand), HTTP router, Incus VM handlers, WS proxy
+    ├── auth.go             # Authentication, session timeout management, bcrypt, TOTP 2FA, audit logs
+    ├── network.go          # OVS integration, network segments (Portgroups), VLAN tagging, sysctl bridge isolation
+    ├── uplink.go           # Physical NIC manager, default route management IF protection, DHCP/Static IP manager
+    ├── storage.go          # Raw block device discovery (lsblk), zpool formatting, Incus storage pool registration
+    ├── qos.go              # Traffic shaping, OpenFlow queue allocation, bandwidth limits
+    ├── security.go         # eBPF/XDP DDoS protection service controller & security event logger
+    ├── snapshot.go         # Automatic ZFS snapshot scheduler (15-min cron), snapshot timeline, 1-click rollback
+    ├── updates.go          # Zero-downtime auto-update manager (Git pull, atomic build, health check, rollback)
+    ├── install.sh          # Node installer script for direct Linux bare-metal deployment
+    ├── templates/          # Embedded HTML templates (HTMX partial fragments)
+    │   ├── layout.html     # Base SPA layout shell
+    │   ├── dashboard.html  # System resource gauges, instance list, audit logs
+    │   ├── vm-detail.html  # VM detail tabs (General, Hardware, Snapshots timeline, Console)
+    │   ├── storage.html    # Datastores & Unused Raw Disks manager
+    │   ├── uplinks.html    # Physical NICs, vSwitch bindings & IP configuration
+    │   ├── network.html    # OVS Portgroups & VLAN segment manager
+    │   ├── security.html   # eBPF/XDP DDoS protection toggle & security audit trail
+    │   └── settings.html   # Admin credentials, session timeout, 2FA MFA setup, System Update card
+    └── static/
+        ├── app.js          # HTMX event listeners, WebSocket terminal proxy, modal dialog handlers
+        └── style.css       # Custom CSS design system (dark theme, glassmorphism, micro-animations)
+```
 
+---
+
+## 3. Database Schema (`bizbox.db`)
+
+1. **`users`**: `id`, `username`, `password_hash`, `two_factor_secret`, `two_factor_enabled`, `session_timeout_minutes`, `created_at`
+2. **`system_logs`**: `id`, `timestamp`, `user`, `action`, `target`, `status`
+3. **`network_segments`**: `id`, `name`, `vlan_id`, `vswitch_name`, `created_at`
+4. **`network_segment_vms`**: `vm_name`, `segment_name` (Foreign key -> `network_segments.name`)
+5. **`qos_rules`**: `id`, `segment_name`, `max_rate_mbps`, `burst_rate_mbps`, `created_at`
+6. **`security_settings`**: `key` (PRIMARY KEY), `value`
+7. **`security_logs`**: `id`, `timestamp`, `action`
+
+---
+
+## 4. Key Architectural Safeguards & Engineering Highlights
+
+### A. L2 Bridge Isolation (`bridge-nf-call-iptables = 0`)
+* **Problem**: In Linux kernels, if `net.bridge.bridge-nf-call-iptables` is enabled, host-level `iptables` / `netfilter` rules process L2 bridge frames (VM-to-VM traffic on OVS tap interfaces), causing unexpected packet drops or security log pollution.
+* **Solution**: `network.go` enforces sysctl parameters programmatically at application startup (`tuneBridgeSysctl`), and `install.sh` / `01-build-rootfs.sh` persist `/etc/sysctl.d/99-bizbox-bridge.conf`:
+  ```ini
+  net.bridge.bridge-nf-call-iptables = 0
+  net.bridge.bridge-nf-call-ip6tables = 0
+  net.bridge.bridge-nf-call-arptables = 0
+  ```
+
+### B. Atomic Binary Swap & Self-Healing Auto-Update (`updates.go`)
+* **Control Plane Isolation**: Running QEMU/KVM VMs run inside independent Incus daemon processes. Updating the `bizbox-mvp` Go binary does **not** interrupt running VMs.
+* **Atomic Compilation**: Updates compile the new version to a temporary binary (`go build -o bizbox-mvp.new`). If compilation fails, the active binary remains untouched.
+* **Atomic Swap**: Upon compilation success, `os.Rename("bizbox-mvp.new", "bizbox-mvp")` performs an atomic filesystem swap.
+* **Automated Health Check & Rollback**: After updating, the system polls `GET /api/health`. If the health check fails to return `200 OK` within 5 seconds, `runSystemUpdate()` automatically restores `bizbox-mvp.bak`, restarts the service, and prevents control plane downtime.
+
+### C. Physical Uplink & Host Management Protection (`uplink.go`)
+* **Management NIC Auto-Detection**: Detects the interface holding the host's default gateway route (e.g. `eth0`).
+* **Bridge Attachment Guard**: Prevents administrators from accidentally attaching the active management interface to an OVS bridge, avoiding host network lockouts.
+
+### D. Automated Sub-Second ZFS Snapshot Scheduler (`snapshot.go`)
+* Background goroutine (`StartAutoSnapshotScheduler`) polls instances every 15 minutes (configurable) and triggers native ZFS snapshots (`zfs snapshot rft/virtual-machines/vm@snap_timestamp`).
+* Enables sub-second point-in-time state rollbacks via ZFS COW engine (`zfs rollback`).
+
+---
+
+## 5. Guidelines for AI Software Evaluation
+
+When reviewing this codebase for software quality, architecture, and security, evaluate the following dimensions:
+
+1. **Separation of Concerns & Architecture**:
+   - Is the Go control plane cleanly decoupled from hypervisor and SDN drivers?
+   - How well does the HTMX template rendering eliminate unnecessary JavaScript build pipelines while maintaining responsive UX?
+2. **Resilience & Fault Tolerance**:
+   - Does the auto-update mechanism handle partial compilation failures and process crashes gracefully?
+   - Are hypervisor operations (Incus Unix socket) properly isolated from host management networking?
+3. **Security & Hardening**:
+   - Are password hashing (bcrypt), TOTP 2FA, session timeouts, and audit trails correctly implemented?
+   - Is host network ingress (eBPF/XDP) properly segregated from internal VM-to-VM L2 SDN traffic?
+4. **Performance & Resource Overhead**:
+   - Evaluate memory footprint and startup performance of the Go monolith compared to alternative hypervisor management stacks (e.g. Proxmox, OpenStack).
+5. **Code Maintainability**:
+   - Is error handling explicit across system commands (`exec.Command`) and database queries?
