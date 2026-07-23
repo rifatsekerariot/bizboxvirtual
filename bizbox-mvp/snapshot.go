@@ -141,7 +141,6 @@ func takeAutoSnapshotsAndClean() {
 		return
 	}
 
-	now := time.Now()
 	for _, inst := range instances {
 
 		// 1. Create automatic snapshot

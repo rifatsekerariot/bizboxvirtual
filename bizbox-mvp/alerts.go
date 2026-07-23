@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/smtp"
 	"net/url"
-	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
