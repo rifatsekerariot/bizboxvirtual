@@ -83,6 +83,15 @@ func InitDB() {
 		log.Fatalf("system_logs tablosu oluşturma hatası: %v", err)
 	}
 
+	queryAttempts := `
+	CREATE TABLE IF NOT EXISTS login_attempts (
+		key TEXT PRIMARY KEY,
+		attempt_count INTEGER DEFAULT 0,
+		locked_until DATETIME,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	_, _ = db.Exec(queryAttempts)
+
 	// Seed the admin user
 	if err := SeedAdminUser(); err != nil {
 		log.Printf("Admin kullanıcı seed hatası: %v", err)
@@ -278,31 +287,92 @@ func getUserFromDB(username string) (User, error) {
 	return user, nil
 }
 
-// handlePostLogin authenticates the user with brute-force protection and sets a session cookie.
+// checkAttemptLocked checks if a persistent attempt key is currently locked in SQLite DB
+func checkAttemptLocked(key string) (bool, time.Time) {
+	var lockedUntilStr sql.NullString
+	err := db.QueryRow("SELECT locked_until FROM login_attempts WHERE key = ?", key).Scan(&lockedUntilStr)
+	if err != nil || !lockedUntilStr.Valid {
+		return false, time.Time{}
+	}
+
+	lockedUntil, err := time.Parse(time.RFC3339, lockedUntilStr.String)
+	if err != nil {
+		lockedUntil, err = time.Parse("2006-01-02 15:04:05", lockedUntilStr.String)
+	}
+	if err == nil && time.Now().Before(lockedUntil) {
+		return true, lockedUntil
+	}
+	return false, time.Time{}
+}
+
+// recordFailedAttempt increments attempt count in DB and sets lockout timestamp if threshold exceeded
+func recordFailedAttempt(key string, maxAttempts int, lockDuration time.Duration) (int, bool) {
+	var count int
+	err := db.QueryRow("SELECT attempt_count FROM login_attempts WHERE key = ?", key).Scan(&count)
+	if err != nil {
+		count = 0
+	}
+	count++
+
+	var lockedUntilStr string
+	isLocked := false
+	if count >= maxAttempts {
+		isLocked = true
+		lockedUntilStr = time.Now().Add(lockDuration).Format(time.RFC3339)
+		_, _ = db.Exec("INSERT INTO login_attempts (key, attempt_count, locked_until, updated_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET attempt_count = ?, locked_until = ?, updated_at = datetime('now')", key, count, lockedUntilStr, count, lockedUntilStr)
+	} else {
+		_, _ = db.Exec("INSERT INTO login_attempts (key, attempt_count, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET attempt_count = ?, updated_at = datetime('now')", key, count, count)
+	}
+
+	return count, isLocked
+}
+
+// resetFailedAttempt clears persistent failed attempts for a key
+func resetFailedAttempt(key string) {
+	_, _ = db.Exec("DELETE FROM login_attempts WHERE key = ?", key)
+}
+
+// handlePostLogin authenticates the user with persistent brute-force protection and sets a session cookie.
 func handlePostLogin(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	twoFactorCode := r.FormValue("two_factor_code")
 
-	attemptKey := r.RemoteAddr + ":" + username
-	attemptMu.Lock()
-	attempt, exists := loginAttempts[attemptKey]
-	if exists && time.Now().Before(attempt.LockedUntil) {
-		attemptMu.Unlock()
+	clientIP := strings.Split(r.RemoteAddr, ":")[0]
+	userKey := "user:" + username
+	ipKey := "ip:" + clientIP
+
+	// 1. Check Username Lockout Policy (5 failed attempts per specific username)
+	if locked, _ := checkAttemptLocked(userKey); locked {
 		data := struct {
 			Error    string
 			Show2FA  bool
 			Username string
 			Password string
 		}{
-			Error: "Çok sayıda hatalı giriş denemesi. Hesabınız 15 dakika boyunca kilitlendi.",
+			Error: fmt.Sprintf("'%s' kullanıcısı çok sayıda hatalı şifre denemesi nedeniyle kilitlendi. Lütfen 15 dakika bekleyin.", username),
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusTooManyRequests)
 		templates.ExecuteTemplate(w, "login.html", data)
 		return
 	}
-	attemptMu.Unlock()
+
+	// 2. Check Global IP Rate Limit Policy (20 failed attempts per IP across any user for NAT safety)
+	if locked, _ := checkAttemptLocked(ipKey); locked {
+		data := struct {
+			Error    string
+			Show2FA  bool
+			Username string
+			Password string
+		}{
+			Error: fmt.Sprintf("IP adresiniz (%s) çok sayıda hatalı deneme nedeniyle kilitlendi. Lütfen 15 dakika bekleyin.", clientIP),
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusTooManyRequests)
+		templates.ExecuteTemplate(w, "login.html", data)
+		return
+	}
 
 	user, err := getUserFromDB(username)
 	var valid bool
@@ -313,17 +383,17 @@ func handlePostLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !valid {
-		attemptMu.Lock()
-		if !exists {
-			attempt = &LoginAttempt{Count: 0}
-			loginAttempts[attemptKey] = attempt
+		// Record failed attempt for specific user account (5 max threshold)
+		_, userNowLocked := recordFailedAttempt(userKey, 5, 15*time.Minute)
+		if userNowLocked {
+			SendAlert("warning", "Kullanıcı Hesabı Kilitlendi", fmt.Sprintf("'%s' kullanıcısı %s IP'sinden 5 kez hatalı şifre girildiği için 15 dakika kilitlendi.", username, clientIP))
 		}
-		attempt.Count++
-		if attempt.Count >= 5 {
-			attempt.LockedUntil = time.Now().Add(15 * time.Minute)
-			SendAlert("warning", "Brute-force Giriş Uyarısı", fmt.Sprintf("%s IP adresinden '%s' kullanıcısı için 5 kez üst üste hatalı giriş yapıldı. Hesap 15 dakika kilitlendi.", r.RemoteAddr, username))
+
+		// Record failed attempt for client IP (20 max threshold for NAT/Shared Wi-Fi safety)
+		_, ipNowLocked := recordFailedAttempt(ipKey, 20, 15*time.Minute)
+		if ipNowLocked {
+			SendAlert("warning", "IP Adresi Kilitlendi", fmt.Sprintf("%s IP adresi 20 kez üst üste hatalı giriş denemesi nedeniyle kilitlendi.", clientIP))
 		}
-		attemptMu.Unlock()
 
 		data := struct {
 			Error    string
@@ -339,10 +409,9 @@ func handlePostLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Login successful: reset failed attempt counter
-	attemptMu.Lock()
-	delete(loginAttempts, attemptKey)
-	attemptMu.Unlock()
+	// Login successful: reset failed attempt counter for both user and IP keys
+	resetFailedAttempt(userKey)
+	resetFailedAttempt(ipKey)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		templates.ExecuteTemplate(w, "login.html", data)

@@ -78,6 +78,7 @@ bizboxvirtual/
 6. **`security_settings`**: `key` (PRIMARY KEY), `value`
 7. **`security_logs`**: `id`, `timestamp`, `action`
 8. **`alert_settings`**: `key` (PRIMARY KEY), `value` (Webhook URL, Telegram Token/Chat ID, SMTP settings)
+9. **`login_attempts`**: `key` (PRIMARY KEY), `attempt_count`, `locked_until`, `updated_at`
 
 ---
 
@@ -87,8 +88,10 @@ bizboxvirtual/
 * **Transport Layer Security**: On first boot, `main.go` automatically generates self-signed TLS certificates (`config/cert.pem`, `config/key.pem`) using Go's `crypto/x509` and `crypto/rsa` if custom certificates are not supplied.
 * **Encrypted API & Session Token Protection**: Serves HTTPS on port `8443` and automatically redirects plain HTTP traffic on port `8080` to `https://<host>:8443`, protecting login passwords, TOTP tokens, and session cookies from LAN eavesdropping.
 
-### B. Brute-Force Rate Limiting & Account Lockout (`auth.go`)
-* **IP/User Attempt Limiter**: Tracks failed login attempts per IP/Username. Upon 5 consecutive failed attempts, logins are locked for 15 minutes.
+### B. Persistent SQLite Rate-Limiting & Dual Lockout Policy (`auth.go`)
+* **DB-backed State Persistence**: Failed attempts are stored in SQLite `login_attempts` table (`key`, `attempt_count`, `locked_until`). Restarting the service / binary auto-updates does **NOT** reset attempt counters or bypass lockouts.
+* **Username Lockout Policy**: Scoped per user (`user:<username>`). 5 consecutive failed attempts lock that specific user account for 15 minutes without impacting other users.
+* **NAT-Safe IP Protection Policy**: Scoped per client IP (`ip:<client_ip>`). To protect corporate networks behind shared NAT IPs from single-user lockouts, IP-level rate limiting uses a 20-attempt threshold before locking the IP.
 * **Proactive Security Alerts**: Lockouts trigger an immediate notification dispatch (`SendAlert`) to Webhooks, Telegram, and Email via `alerts.go`.
 
 ### C. Role-Based Access Control (RBAC) (`auth.go` & `main.go`)
