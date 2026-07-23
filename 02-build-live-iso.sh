@@ -94,9 +94,16 @@ cp "$KERNEL_PATH" "$ISO_TREE/casper/vmlinuz"
 cp "$INITRD_PATH" "$ISO_TREE/casper/initrd"
 
 echo "====== [2/4] Compressing rootfs to squashfs (xz, this takes a while) ======"
+# Ensure no leftover virtual filesystems remain mounted inside rootfs before packing
+umount -lf "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
+umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
+umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
+umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
+
 mksquashfs "$ROOTFS_DIR" "$ISO_TREE/casper/filesystem.squashfs" \
   -comp xz \
-  -noappend
+  -noappend \
+  -e proc sys dev
 
 printf "%s" "$(du -sx --block-size=1 "$ROOTFS_DIR" | cut -f1)" > "$ISO_TREE/casper/filesystem.size"
 
