@@ -22,13 +22,14 @@ mkdir -p "$ISO_TREE/casper" "$ISO_TREE/boot/grub"
 
 # Helper to find the newest existing, non-broken regular file matching a glob
 find_valid_file() {
+  local found=""
   for candidate in $(ls -1 $1 2>/dev/null | sort -rV); do
     if [ -f "$candidate" ] && [ -s "$candidate" ]; then
-      echo "$candidate"
-      return 0
+      found="$candidate"
+      break
     fi
   done
-  return 1
+  echo "$found"
 }
 
 KERNEL_PATH=$(find_valid_file "$ROOTFS_DIR/boot/vmlinuz-*")
