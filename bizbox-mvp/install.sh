@@ -45,6 +45,15 @@ apt-get install -y \
 echo "ZFS Storage pool yönetimi arayüze bırakıldı."
 
 
+# 3.1 Configure Sysctl for L2 Bridge Isolation (Prevent host iptables interference on VM-VM traffic)
+echo "Configuring Sysctl bridge-nf parameters..."
+cat <<EOF > /etc/sysctl.d/99-bizbox-bridge.conf
+net.bridge.bridge-nf-call-iptables = 0
+net.bridge.bridge-nf-call-ip6tables = 0
+net.bridge.bridge-nf-call-arptables = 0
+EOF
+sysctl -p /etc/sysctl.d/99-bizbox-bridge.conf || true
+
 # 4. Configure Integration Bridge (OVS)
 echo "Configuring Open vSwitch..."
 if ! ovs-vsctl show | grep -q "br-int"; then

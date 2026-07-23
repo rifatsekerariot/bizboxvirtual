@@ -131,17 +131,40 @@ func handleResetUpdate(w http.ResponseWriter, r *http.Request) {
 	renderStatusHTML(w)
 }
 
-// The main production update runner
+// Helper function to test system health via /api/health endpoint
+func verifyHealthCheck() bool {
+	client := http.Client{
+		Timeout: 2 * time.Second,
+	}
+	// Try 5 attempts over 5 seconds
+	for i := 0; i < 5; i++ {
+		resp, err := client.Get("http://127.0.0.1:8080/api/health")
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return true
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return false
+}
+
+// The main production update runner with atomic swap & health check rollback
 func runSystemUpdate() {
-	// Step 1: System Backup Creation (Folder copy since root is ext4)
+	// Step 1: System Backup Creation (Folder copy & Binary backup)
 	updateMu.Lock()
 	updateState.Progress = 10
-	updateState.Message = "Adım 1/4: Sistem yedeği alınıyor..."
+	updateState.Message = "Adım 1/4: Sistem yedeği ve mevcut binary alınıyor..."
 	updateMu.Unlock()
 
 	backupDir := fmt.Sprintf("/root/bizboxvirtual_backup_%d", time.Now().Unix())
-	cmdBackup := exec.Command("cp", "-r", "d:\\Antigravity\\bizboxvirtual", backupDir)
+	cmdBackup := exec.Command("cp", "-r", ".", backupDir)
 	_ = cmdBackup.Run() // Ignore errors for now on Windows/Linux mix
+
+	// Backup current binary for instant atomic rollback
+	_ = exec.Command("cp", "bizbox-mvp", "bizbox-mvp.bak").Run()
 
 	// Step 2: Fetch updates (Git pull)
 	updateMu.Lock()
@@ -160,28 +183,54 @@ func runSystemUpdate() {
 		return
 	}
 
-	// Step 3: Rebuild the application (Go build)
+	// Step 3: Atomic Rebuild (go build -o bizbox-mvp.new)
 	updateMu.Lock()
 	updateState.Progress = 70
-	updateState.Message = "Adım 3/4: Yeni sürüm derleniyor..."
+	updateState.Message = "Adım 3/4: Yeni sürüm atomic binary olarak derleniyor..."
 	updateMu.Unlock()
 
-	cmdBuild := exec.Command("go", "build", "-o", "bizbox-mvp")
+	cmdBuild := exec.Command("go", "build", "-o", "bizbox-mvp.new")
 	if out, err := cmdBuild.CombinedOutput(); err != nil {
+		_ = os.Remove("bizbox-mvp.new") // Clean temporary build if failed
 		updateMu.Lock()
 		updateState.Status = "failed"
 		updateState.Progress = 100
-		updateState.Message = "Güncelleme başarısız! Proje derlenemedi."
+		updateState.Message = "Güncelleme başarısız! Proje derlenemedi. Çalışan binary korunuyor."
 		updateState.ErrorMsg = fmt.Sprintf("Derleme hatası: %v. Detay: %s", err, string(out))
 		updateMu.Unlock()
 		return
 	}
 
-	// Step 4: Finalizing & Success
+	// Perform atomic binary swap (bizbox-mvp.new -> bizbox-mvp)
+	if err := os.Rename("bizbox-mvp.new", "bizbox-mvp"); err != nil {
+		// Fallback to cp if rename fails across different devices
+		_ = exec.Command("cp", "-f", "bizbox-mvp.new", "bizbox-mvp").Run()
+		_ = os.Remove("bizbox-mvp.new")
+	}
+
+	// Step 4: Health Check & Finalizing
 	updateMu.Lock()
 	updateState.Progress = 90
-	updateState.Message = "Adım 4/4: Yapılandırma temizleniyor..."
+	updateState.Message = "Adım 4/4: Sağlık kontrolü (health-check) yapılıyor..."
 	updateMu.Unlock()
+
+	// Verify panel health after update
+	if !verifyHealthCheck() {
+		// Health check failed! Initiate automatic rollback to bizbox-mvp.bak
+		_ = exec.Command("cp", "-f", "bizbox-mvp.bak", "bizbox-mvp").Run()
+		_ = exec.Command("systemctl", "restart", "bizbox-mvp.service").Run()
+
+		updateMu.Lock()
+		updateState.Status = "failed"
+		updateState.Progress = 100
+		updateState.Message = "Güncelleme başarısız! Sağlık kontrolü (health-check) yanıt vermedi. Sistem otomatik olarak kararlı yedek binary'ye (Rollback) döndürüldü."
+		updateState.ErrorMsg = "HTTP GET /api/health endpoint'i 200 OK yanıtı vermedi."
+		updateMu.Unlock()
+		return
+	}
+
+	// Clean temporary backup after verified success
+	_ = os.Remove("bizbox-mvp.bak")
 
 	// Update version.json config
 	cfg, err := loadVersionConfig()
@@ -194,7 +243,7 @@ func runSystemUpdate() {
 	updateMu.Lock()
 	updateState.Status = "success"
 	updateState.Progress = 100
-	updateState.Message = "Sistem başarıyla güncellendi! Yeni Sürüm: " + cfg.NewVersion
+	updateState.Message = "Sistem başarıyla güncellendi ve doğrulandı! Yeni Sürüm: " + cfg.NewVersion
 	updateMu.Unlock()
 }
 

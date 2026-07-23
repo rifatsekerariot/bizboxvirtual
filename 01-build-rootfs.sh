@@ -134,6 +134,14 @@ chroot "$ROOTFS_DIR" /bin/bash -c "
 echo "admin ALL=(ALL) NOPASSWD:ALL" > "$ROOTFS_DIR/etc/sudoers.d/admin"
 chmod 440 "$ROOTFS_DIR/etc/sudoers.d/admin"
 
+# Sysctl configuration: Bridge netfilter disable for L2 isolation
+mkdir -p "$ROOTFS_DIR/etc/sysctl.d"
+cat > "$ROOTFS_DIR/etc/sysctl.d/99-bizbox-bridge.conf" <<'SYSCTL'
+net.bridge.bridge-nf-call-iptables = 0
+net.bridge.bridge-nf-call-ip6tables = 0
+net.bridge.bridge-nf-call-arptables = 0
+SYSCTL
+
 # ---------------------------------------------------------------------------
 # Netplan: tum ethernet arayzlerini DHCP ile otomatik yapilandir
 # ---------------------------------------------------------------------------

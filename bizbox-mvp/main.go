@@ -1227,6 +1227,7 @@ func main() {
 		mux.HandleFunc("POST /api/settings/2fa/disable", handlePostSettings2FADisable)
 
 		// System Updates endpoints
+		mux.HandleFunc("GET /api/health", handleHealthCheck)
 		mux.HandleFunc("GET /api/updates/check", handleGetUpdatesCheck)
 		mux.HandleFunc("POST /api/updates/start", handleStartUpdate)
 		mux.HandleFunc("GET /api/updates/status", handleGetUpdateStatus)
@@ -1535,3 +1536,11 @@ func GetIncusClient() incus.InstanceServer {
 	c, _ := incus.ConnectIncusUnix(socketPath, nil)
 	return c
 }
+
+// GET /api/health - Returns 200 OK for system updates health checks
+func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
+}
+

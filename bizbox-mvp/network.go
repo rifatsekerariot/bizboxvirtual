@@ -47,7 +47,15 @@ func InitNetworkDB() {
 		log.Fatalf("network_segment_vms tablosu oluşturulurken hata: %v", err)
 	}
 
-	// No seed database segments in production to prevent mock/placeholder data
+	// Ensure L2 bridge traffic (VM-to-VM) is isolated from host iptables filtering
+	tuneBridgeSysctl()
+}
+
+// tuneBridgeSysctl ensures L2 bridge traffic is isolated from host iptables rules
+func tuneBridgeSysctl() {
+	_ = exec.Command("sysctl", "-w", "net.bridge.bridge-nf-call-iptables=0").Run()
+	_ = exec.Command("sysctl", "-w", "net.bridge.bridge-nf-call-ip6tables=0").Run()
+	_ = exec.Command("sysctl", "-w", "net.bridge.bridge-nf-call-arptables=0").Run()
 }
 
 // syncNetworkDB checks actual VMs in Incus and removes ghost VMs from the network DB
