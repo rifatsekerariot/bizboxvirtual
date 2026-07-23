@@ -488,11 +488,6 @@ func handlePostLogin(w http.ResponseWriter, r *http.Request) {
 	// Login successful: reset failed attempt counter for both user and IP keys
 	resetFailedAttempt(userKey)
 	resetFailedAttempt(ipKey)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusUnauthorized)
-		templates.ExecuteTemplate(w, "login.html", data)
-		return
-	}
 
 	// Password is valid! Now check 2FA if enabled
 	if user.TwoFactorEnabled {
