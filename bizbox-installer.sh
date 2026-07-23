@@ -106,13 +106,13 @@ wipe_disk() {
   echo "    Siliniyor: /dev/$disk"
   wipefs -a -f "/dev/$disk" 2>/dev/null || true
   sgdisk --zap-all "/dev/$disk" >/dev/null 2>&1 || true
-  dd if=/dev/zero of="/dev/$disk" bs=1M count=100 conv=fdatasync 2>/dev/null || true
+  dd "if=/dev/zero" "of=/dev/$disk" bs=1M count=100 conv=fdatasync 2>/dev/null || true
   local size_bytes size_mb seek_mb
   size_bytes=$(blockdev --getsize64 "/dev/$disk" 2>/dev/null || echo 0)
   size_mb=$(( size_bytes / 1024 / 1024 ))
   seek_mb=$(( size_mb - 100 ))
   if [ "$seek_mb" -gt 0 ]; then
-    dd if=/dev/zero of="/dev/$disk" bs=1M count=100 seek="$seek_mb" conv=fdatasync 2>/dev/null || true
+    dd "if=/dev/zero" "of=/dev/$disk" bs=1M count=100 seek="$seek_mb" conv=fdatasync 2>/dev/null || true
   fi
   partprobe "/dev/$disk" 2>/dev/null || true
   blockdev --rereadpt "/dev/$disk" 2>/dev/null || true
