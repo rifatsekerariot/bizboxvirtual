@@ -82,9 +82,10 @@ Architectures: amd64
 Signed-By: /etc/apt/keyrings/zabbly.asc
 EOF
 
-  apt-get update -qq
+  apt-get update
   apt-get install -y --no-install-recommends \
     linux-image-generic \
+    linux-modules-extra-generic \
     linux-firmware \
     kmod \
     pciutils \
@@ -112,10 +113,8 @@ EOF
     openssh-server \
     efibootmgr \
     systemd-resolved dnsmasq-base apparmor \
-    grub-pc-bin grub-efi-amd64 grub-efi-amd64-signed shim-signed
+    grub-pc-bin grub-efi-amd64 grub-efi-amd64-signed shim-signed || apt-get install -y --no-install-recommends linux-image-generic linux-firmware
 
-  # Attempt extra kernel modules if available in mirror (optional fallback)
-  apt-get install -y --no-install-recommends linux-modules-extra-generic 2>/dev/null || true
   apt-get clean
   rm -rf /var/lib/apt/lists/*
 "
