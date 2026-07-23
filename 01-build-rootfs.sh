@@ -41,6 +41,7 @@ mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
 mount -t proc  proc   "$ROOTFS_DIR/proc"
 mount -t sysfs sysfs  "$ROOTFS_DIR/sys"
 cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
+touch "$ROOTFS_DIR/etc/modules" 2>/dev/null || true
 
 cleanup() {
   echo "Cleaning up chroot mounts..."
@@ -50,6 +51,13 @@ cleanup() {
   umount -lf "$ROOTFS_DIR/sys"     2>/dev/null || true
 }
 trap cleanup EXIT
+
+# Robust helper function to enable systemd services inside chroot
+enable_rootfs_service() {
+  local service_name="$1"
+  chroot "$ROOTFS_DIR" /bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin systemctl enable '$service_name' 2>/dev/null" || \
+  (mkdir -p "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants" && ln -sf "/etc/systemd/system/$service_name" "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/$service_name" 2>/dev/null) || true
+}
 
 # ---------------------------------------------------------------------------
 # APT sources: main + universe
@@ -194,7 +202,7 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 BANNER_SERVICE
 
-chroot "$ROOTFS_DIR" systemctl enable bizbox-banner.service 2>/dev/null || true
+enable_rootfs_service "bizbox-banner.service"
 
 # ---------------------------------------------------------------------------
 # Netplan: tum ethernet arayzlerini DHCP ile otomatik yapilandir
@@ -324,15 +332,14 @@ Environment=AUTO_SNAPSHOT_INTERVAL_MINUTES=15
 WantedBy=multi-user.target
 SYS
 
-chroot "$ROOTFS_DIR" systemctl enable bizbox-mvp.service
-chroot "$ROOTFS_DIR" systemctl enable NetworkManager.service
-chroot "$ROOTFS_DIR" systemctl enable ssh.service 2>/dev/null || \
-  chroot "$ROOTFS_DIR" systemctl enable sshd.service 2>/dev/null || true
+enable_rootfs_service "bizbox-mvp.service"
+enable_rootfs_service "NetworkManager.service"
+enable_rootfs_service "ssh.service"
+enable_rootfs_service "sshd.service"
 
 # Fix DNS via systemd-resolved
-chroot "$ROOTFS_DIR" systemctl enable systemd-resolved.service
-chroot "$ROOTFS_DIR" rm -f /etc/resolv.conf
-chroot "$ROOTFS_DIR" ln -s ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+enable_rootfs_service "systemd-resolved.service"
+chroot "$ROOTFS_DIR" /bin/bash -c "rm -f /etc/resolv.conf && ln -s ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf" 2>/dev/null || true
 
 # Create an initialization service for Incus so it runs automatically on first boot
 cat > "$ROOTFS_DIR/etc/systemd/system/incus-init.service" <<'SYS'
@@ -353,12 +360,13 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 SYS
 
-chroot "$ROOTFS_DIR" systemctl enable incus-init.service
+enable_rootfs_service "incus-init.service"
 
 # ---------------------------------------------------------------------------
 # [6/6] Installer servisi (live boot'ta kurulumu gerceklestiren script)
 # ---------------------------------------------------------------------------
 echo "====== [6/6] Installing the on-boot installer service ======"
+mkdir -p "$ROOTFS_DIR/usr/local/sbin"
 cp "$SCRIPT_DIR/bizbox-installer.sh" "$ROOTFS_DIR/usr/local/sbin/bizbox-installer.sh"
 chmod +x "$ROOTFS_DIR/usr/local/sbin/bizbox-installer.sh"
 
@@ -384,7 +392,7 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 SYS
 
-chroot "$ROOTFS_DIR" systemctl enable bizbox-installer.service
+enable_rootfs_service "bizbox-installer.service"
 
 echo "====== Rootfs build complete: $ROOTFS_DIR ======"
 echo "Simdi 02-build-live-iso.sh calistirin."
