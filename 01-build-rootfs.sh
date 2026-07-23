@@ -142,6 +142,57 @@ net.bridge.bridge-nf-call-ip6tables = 0
 net.bridge.bridge-nf-call-arptables = 0
 SYSCTL
 
+# Persistent ESXi/Proxmox Style TTY Console Banner
+cat <<'BANNER_SCRIPT' > "$ROOTFS_DIR/usr/local/bin/bizbox-refresh-banner.sh"
+#!/bin/bash
+IPS=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | tr '\n' ' ')
+HOSTNAME=$(hostname)
+FIRST_IP=$(echo $IPS | awk '{print $1}')
+
+if [ -z "$FIRST_IP" ]; then
+  FIRST_IP="<ip-adresi-bekleniyor>"
+fi
+
+cat <<BANNER > /etc/issue
+====================================================================
+               BIZBOX ENTERPRISE HYPERVISOR APPLIANCE               
+====================================================================
+  Kurulan Sistem  : BizBox Virtualization Appliance v1.0.0
+  Sunucu İsmi     : ${HOSTNAME}
+  Ağ IP Adresleri : ${IPS}
+
+  Yönetim Arayüzü : https://${FIRST_IP}:8443  (HTTPS - Güvenli)
+                  : http://${FIRST_IP}:8080   (HTTP Yönlendirme)
+
+  Web Panel Girişi : Kullanıcı: admin / Şifre: admin (Değiştiriniz)
+  Root Konsol/SSH  : Kurulumda belirlediğiniz ROOT şifresi
+
+  Dokümantasyon   : https://github.com/rifatsekerariot/bizboxvirtual
+====================================================================
+
+BANNER
+cp /etc/issue /etc/issue.net
+BANNER_SCRIPT
+
+chmod +x "$ROOTFS_DIR/usr/local/bin/bizbox-refresh-banner.sh"
+
+cat <<'BANNER_SERVICE' > "$ROOTFS_DIR/etc/systemd/system/bizbox-banner.service"
+[Unit]
+Description=BizBox Dynamic TTY Console Banner
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bizbox-refresh-banner.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+BANNER_SERVICE
+
+chroot "$ROOTFS_DIR" systemctl enable bizbox-banner.service 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Netplan: tum ethernet arayzlerini DHCP ile otomatik yapilandir
 # ---------------------------------------------------------------------------

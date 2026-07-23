@@ -12,6 +12,25 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# 1.1 Interactive Root Password Setup
+echo ""
+echo "========================================================"
+echo "          Root Parolası Yapılandırması                  "
+echo "========================================================"
+while true; do
+  read -s -p "Lütfen bu sunucu için ROOT kullanıcısı parolası belirleyin: " ROOT_PASS
+  echo ""
+  read -s -p "Parolayı tekrar girin: " ROOT_PASS_CONFIRM
+  echo ""
+  if [ -n "$ROOT_PASS" ] && [ "$ROOT_PASS" = "$ROOT_PASS_CONFIRM" ]; then
+    echo "root:$ROOT_PASS" | chpasswd
+    echo "Root parolası başarıyla ayarlandı."
+    break
+  else
+    echo "Hata: Parolalar uyuşmuyor veya boş bırakıldı. Lütfen tekrar deneyin."
+  fi
+done
+
 # 2. Add Zabbly repository for Incus (Fixes OVS JSON-RPC bugs)
 echo "Adding Zabbly repository for Incus..."
 mkdir -p /etc/apt/keyrings/
@@ -41,9 +60,7 @@ apt-get install -y \
   curl
 
 # 3. Datastore (ZFS Pool) Yönetimi
-# Artık kurulumda otomatik 'rft' pool oluşturmuyoruz. Kullanıcı bunu yönetim panelindeki 'Depolama' sekmesinden yapacaktır.
 echo "ZFS Storage pool yönetimi arayüze bırakıldı."
-
 
 # 3.1 Configure Sysctl for L2 Bridge Isolation (Prevent host iptables interference on VM-VM traffic)
 echo "Configuring Sysctl bridge-nf parameters..."
@@ -88,11 +105,66 @@ Environment=AUTO_SNAPSHOT_INTERVAL_MINUTES=15
 WantedBy=multi-user.target
 EOF
 
-# Reload and enable service
+# 7. Configure Persistent TTY Console Banner (ESXi / Proxmox Style)
+echo "Configuring persistent TTY Console Banner..."
+cat <<'EOF' > /usr/local/bin/bizbox-refresh-banner.sh
+#!/bin/bash
+IPS=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | tr '\n' ' ')
+HOSTNAME=$(hostname)
+FIRST_IP=$(echo $IPS | awk '{print $1}')
+
+if [ -z "$FIRST_IP" ]; then
+  FIRST_IP="<ip-adresi-bekleniyor>"
+fi
+
+cat <<BANNER > /etc/issue
+====================================================================
+               BIZBOX ENTERPRISE HYPERVISOR APPLIANCE               
+====================================================================
+  Kurulan Sistem  : BizBox Virtualization Appliance v1.0.0
+  Sunucu İsmi     : ${HOSTNAME}
+  Ağ IP Adresleri : ${IPS}
+
+  Yönetim Arayüzü : https://${FIRST_IP}:8443  (HTTPS - Güvenli)
+                  : http://${FIRST_IP}:8080   (HTTP Yönlendirme)
+
+  Web Panel Girişi : Kullanıcı: admin / Şifre: admin (Değiştiriniz)
+  Root Konsol/SSH  : Kurulumda belirlediğiniz ROOT şifresi
+
+  Dokümantasyon   : https://github.com/rifatsekerariot/bizboxvirtual
+====================================================================
+
+BANNER
+cp /etc/issue /etc/issue.net
+EOF
+
+chmod +x /usr/local/bin/bizbox-refresh-banner.sh
+
+cat <<EOF > /etc/systemd/system/bizbox-banner.service
+[Unit]
+Description=BizBox Dynamic TTY Console Banner
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bizbox-refresh-banner.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload and enable services
 systemctl daemon-reload
 systemctl enable bizbox-mvp.service
+systemctl enable bizbox-banner.service
 systemctl restart bizbox-mvp.service
+systemctl restart bizbox-banner.service
 
-echo "====== Setup Completed Successfully! ======"
-echo "You can access the panel at http://<your-server-ip>:8080"
-echo "Default Credentials: admin / admin"
+# Initial banner update
+/usr/local/bin/bizbox-refresh-banner.sh || true
+
+echo ""
+cat /etc/issue
+echo "====== BizBox Kurulumu Başarıyla Tamamlandı! ======"
