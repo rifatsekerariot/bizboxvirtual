@@ -40,6 +40,7 @@ mount --bind /dev     "$ROOTFS_DIR/dev"
 mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
 mount -t proc  proc   "$ROOTFS_DIR/proc"
 mount -t sysfs sysfs  "$ROOTFS_DIR/sys"
+mkdir -p "$ROOTFS_DIR/etc"
 cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
 nameserver 8.8.8.8
 nameserver 1.1.1.1

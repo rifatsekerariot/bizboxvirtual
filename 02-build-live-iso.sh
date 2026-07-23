@@ -45,6 +45,7 @@ if [ -z "$INITRD_PATH" ]; then
   mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
   mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
   mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
+  mkdir -p "$ROOTFS_DIR/etc"
   cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
 nameserver 8.8.8.8
 nameserver 1.1.1.1
