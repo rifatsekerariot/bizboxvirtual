@@ -43,10 +43,17 @@ fi
 if [ -z "$INITRD_PATH" ]; then
   echo "Bilgi: initrd.img dosyası bulunamadı, chroot ortamı hazırlanıyor ve initramfs derleniyor..."
   mkdir -p "$ROOTFS_DIR/dev/pts" "$ROOTFS_DIR/proc" "$ROOTFS_DIR/sys" "$ROOTFS_DIR/etc"
-  mount -t devtmpfs devtmpfs "$ROOTFS_DIR/dev" 2>/dev/null || mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
-  mount -t devpts devpts "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
+
   mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
   mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
+  mount -t devpts devpts "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
+
+  # Populate essential static dev nodes inside rootfs
+  [ -c "$ROOTFS_DIR/dev/null" ] || mknod -m 666 "$ROOTFS_DIR/dev/null" c 1 3 2>/dev/null || true
+  [ -c "$ROOTFS_DIR/dev/zero" ] || mknod -m 666 "$ROOTFS_DIR/dev/zero" c 1 5 2>/dev/null || true
+  [ -c "$ROOTFS_DIR/dev/random" ] || mknod -m 666 "$ROOTFS_DIR/dev/random" c 1 8 2>/dev/null || true
+  [ -c "$ROOTFS_DIR/dev/urandom" ] || mknod -m 666 "$ROOTFS_DIR/dev/urandom" c 1 9 2>/dev/null || true
+  [ -c "$ROOTFS_DIR/dev/ptmx" ] || mknod -m 666 "$ROOTFS_DIR/dev/ptmx" c 5 2 2>/dev/null || true
 
   cat <<EOF > "$ROOTFS_DIR/etc/resolv.conf"
 nameserver 8.8.8.8
@@ -65,7 +72,6 @@ EOF
   " || true
 
   umount -lf "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
-  umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
   umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
 
