@@ -151,15 +151,64 @@ func takeAutoSnapshotsAndClean() {
 			fmt.Printf("[AutoSnapshot] Başarılı - %s için otomatik snapshot alındı\n", inst.Name)
 		}
 
-	// 2. retention: clean up auto snapshots older than 48 hours
+		// 2. Retention: GFS (Grandfather-Father-Son) Tiered Pruning
 		snaps := ListInstanceSnapshots(inst.Name)
-		for _, snap := range snaps {
-			if snap.IsAutomatic && now.Sub(snap.CreatedAt) > 48*time.Hour {
-				if err := DestroyInstanceSnapshot(snap.VMName, snap.Name); err != nil {
-					fmt.Printf("[AutoSnapshot] Hata - Eski snapshot silinemedi %s: %v\n", snap.Name, err)
-				} else {
-					fmt.Printf("[AutoSnapshot] Başarılı - 48 saatten eski snapshot silindi: %s\n", snap.Name)
-				}
+		pruneGFSSnapshots(inst.Name, snaps)
+	}
+}
+
+// pruneGFSSnapshots applies Grandfather-Father-Son retention tiering to automatic snapshots:
+// - Keep ALL automatic snapshots within the last 24 hours
+// - Keep 1 snapshot per day for days 2 to 7 (Daily Tier)
+// - Keep 1 snapshot per week for weeks 2 to 4 (Weekly Tier)
+// - Delete all automatic snapshots older than 30 days
+func pruneGFSSnapshots(vmName string, snaps []Snapshot) {
+	now := time.Now()
+
+	// Collect automatic snapshots only
+	var autoSnaps []Snapshot
+	for _, s := range snaps {
+		if s.IsAutomatic {
+			autoSnaps = append(autoSnaps, s)
+		}
+	}
+	if len(autoSnaps) == 0 {
+		return
+	}
+
+	dailyKept := make(map[string]bool)  // YYYY-MM-DD -> kept
+	weeklyKept := make(map[string]bool) // YYYY-WW -> kept
+
+	for _, snap := range autoSnaps {
+		age := now.Sub(snap.CreatedAt)
+		dayKey := snap.CreatedAt.Format("2006-01-02")
+		year, week := snap.CreatedAt.ISOWeek()
+		weekKey := fmt.Sprintf("%d-W%02d", year, week)
+
+		shouldKeep := false
+
+		if age <= 24*time.Hour {
+			// Tier 1 (Son 24 saat): Keep everything (hourly / 15-min snapshots)
+			shouldKeep = true
+		} else if age <= 7*24*time.Hour {
+			// Tier 2 (Son 7 gün): Keep 1 snapshot per day
+			if !dailyKept[dayKey] {
+				dailyKept[dayKey] = true
+				shouldKeep = true
+			}
+		} else if age <= 30*24*time.Hour {
+			// Tier 3 (Son 30 gün / 4 hafta): Keep 1 snapshot per week
+			if !weeklyKept[weekKey] {
+				weeklyKept[weekKey] = true
+				shouldKeep = true
+			}
+		}
+
+		if !shouldKeep {
+			if err := DestroyInstanceSnapshot(snap.VMName, snap.ShortName); err != nil {
+				fmt.Printf("[AutoSnapshot] GFS Prune Hata - %s silinemedi: %v\n", snap.Name, err)
+			} else {
+				fmt.Printf("[AutoSnapshot] GFS Prune Başarılı - Eski snapshot silindi: %s (Yaş: %.1f gün)\n", snap.Name, age.Hours()/24)
 			}
 		}
 	}

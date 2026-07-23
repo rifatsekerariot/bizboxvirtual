@@ -113,10 +113,14 @@ bizboxvirtual/
 * **Management NIC Auto-Detection**: Detects the interface holding the host's default gateway route (e.g. `eth0`).
 * **Bridge Attachment Guard**: Prevents administrators from accidentally attaching the active management interface to an OVS bridge, avoiding host network lockouts.
 
-### G. Automated Sub-Second ZFS Snapshot Scheduler & Pruning (`snapshot.go`)
-* Background goroutine (`StartAutoSnapshotScheduler`) polls instances every 15 minutes (configurable) and triggers native ZFS snapshots (`zfs snapshot rft/virtual-machines/vm@snap_timestamp`).
-* **Retention Pruning**: Automatically prunes snapshots older than 48 hours to prevent ZFS pool exhaustion.
-* Enables sub-second point-in-time state rollbacks via ZFS COW engine (`zfs rollback`).
+### G. GFS (Grandfather-Father-Son) Tiered Snapshot Retention & Pruning (`snapshot.go`)
+* **Background Scheduler**: `StartAutoSnapshotScheduler` polls instances every 15 minutes and creates native ZFS snapshots (`zfs snapshot rft/virtual-machines/vm@auto_timestamp`).
+* **Multi-Tier GFS Pruning (`pruneGFSSnapshots`)**: Eliminates flat deletion data-loss risks by implementing a 3-tier GFS retention policy:
+  1. **Son 24 Saat (Hourly Tier / Son)**: Keeps ALL automatic snapshots created within the last 24 hours.
+  2. **Son 7 Gün (Daily Tier / Father)**: Keeps 1 snapshot per calendar day for snapshots between 24 hours and 7 days old.
+  3. **Son 30 Gün / 4 Hafta (Weekly Tier / Grandfather)**: Keeps 1 snapshot per week for snapshots between 7 days and 30 days old.
+  4. **> 30 Gün**: Automatic snapshots older than 30 days are pruned.
+  5. **Manuel Snapshot Koruması**: User-created manual snapshots (`manual_*`) are strictly excluded from automated pruning and preserved indefinitely.
 
 ---
 
