@@ -68,6 +68,7 @@ func InitDB() {
 
 	// Schema migrations for users table
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'")
+	_, _ = db.Exec("ALTER TABLE users ADD COLUMN api_key TEXT DEFAULT ''")
 
 	queryLogs := `
 	CREATE TABLE IF NOT EXISTS system_logs (
@@ -91,6 +92,9 @@ func InitDB() {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	_, _ = db.Exec(queryAttempts)
+
+	// Start housekeeping ticker to purge old login attempts
+	StartLoginAttemptsHousekeeping()
 
 	// Seed the admin user
 	if err := SeedAdminUser(); err != nil {
@@ -178,7 +182,27 @@ func getSessionUser(token string) (User, bool) {
 	return data.User, true
 }
 
-// AuthMiddleware wraps protected handlers, enforces CSRF checks, and checks for a valid session & RBAC role.
+// validateAPIKey validates an API Key for external CLI/automation scripts
+func validateAPIKey(apiKey string) (User, bool) {
+	var user User
+	var createdAtStr string
+	var role sql.NullString
+
+	err := db.QueryRow("SELECT id, username, role, created_at FROM users WHERE api_key = ? AND api_key != ''", apiKey).
+		Scan(&user.ID, &user.Username, &role, &createdAtStr)
+	if err != nil {
+		return User{}, false
+	}
+
+	if role.Valid && role.String != "" {
+		user.Role = role.String
+	} else {
+		user.Role = "admin"
+	}
+	return user, true
+}
+
+// AuthMiddleware wraps protected handlers, enforces CSRF checks, and checks for a valid session, API key & RBAC role.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Static files are exempt from auth checks
@@ -193,20 +217,42 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		cookie, err := r.Cookie("session_token")
-		if err != nil {
-			handleUnauthorized(w, r)
-			return
+		// Check for API Key / Bearer token authentication (for CLI tools & external automation scripts)
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			authHeader := r.Header.Get("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				apiKey = strings.TrimPrefix(authHeader, "Bearer ")
+			}
 		}
 
-		user, valid := getSessionUser(cookie.Value)
-		if !valid {
-			handleUnauthorized(w, r)
-			return
+		isAPIAuth := false
+		var user User
+		var valid bool
+
+		if apiKey != "" {
+			user, valid = validateAPIKey(apiKey)
+			if !valid {
+				http.Error(w, "Unauthorized: Geçersiz API Anahtarı", http.StatusUnauthorized)
+				return
+			}
+			isAPIAuth = true
+		} else {
+			cookie, err := r.Cookie("session_token")
+			if err != nil {
+				handleUnauthorized(w, r)
+				return
+			}
+			user, valid = getSessionUser(cookie.Value)
+			if !valid {
+				handleUnauthorized(w, r)
+				return
+			}
 		}
 
-		// CSRF Protection: For state-modifying methods (POST, PUT, DELETE), verify Origin/Referer header matches Host
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		// CSRF Protection: For state-modifying methods (POST, PUT, DELETE), apply Origin/Referer check ONLY to browser session cookie flows.
+		// Non-browser CLI tools & automation scripts authenticated via API Key (isAPIAuth == true) do not send Origin/Referer and are exempt from CSRF checks.
+		if !isAPIAuth && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete) {
 			origin := r.Header.Get("Origin")
 			referer := r.Header.Get("Referer")
 			reqHost := r.Host
@@ -224,15 +270,15 @@ func AuthMiddleware(next http.Handler) http.Handler {
 					return
 				}
 			}
+		}
 
-			// RBAC Enforcement: Viewer role is strictly prohibited from state mutations
-			if user.Role == "viewer" {
-				log.Printf("[RBAC] Viewer rolündeki kullanıcı yazma işlemini denedi: %s %s (User: %s)", r.Method, r.URL.Path, user.Username)
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`<div class="alert alert-danger" style="padding:10px; background-color:rgba(220,38,38,0.1); color:var(--error-color); border-radius:4px; font-size:13px;">Erişim Engellendi: 'viewer' (Salt Okunur) rolündeki hesaplar sistem üzerinde değişiklik yapamaz.</div>`))
-				return
-			}
+		// RBAC Enforcement: Viewer role is strictly prohibited from state mutations
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete) && user.Role == "viewer" {
+			log.Printf("[RBAC] Viewer rolündeki kullanıcı yazma işlemini denedi: %s %s (User: %s)", r.Method, r.URL.Path, user.Username)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`<div class="alert alert-danger" style="padding:10px; background-color:rgba(220,38,38,0.1); color:var(--error-color); border-radius:4px; font-size:13px;">Erişim Engellendi: 'viewer' (Salt Okunur) rolündeki hesaplar sistem üzerinde değişiklik yapamaz.</div>`))
+			return
 		}
 
 		next.ServeHTTP(w, r)
@@ -553,4 +599,26 @@ func getUsername(r *http.Request) string {
 		}
 	}
 	return "system"
+}
+
+// CleanupExpiredLoginAttempts purges unlocked, old login attempt records from SQLite DB
+func CleanupExpiredLoginAttempts() {
+	result, err := db.Exec("DELETE FROM login_attempts WHERE (locked_until IS NULL OR locked_until < datetime('now', 'localtime')) AND updated_at < datetime('now', '-7 days')")
+	if err == nil {
+		if rows, _ := result.RowsAffected(); rows > 0 {
+			log.Printf("[Housekeeping] %d adet eski login_attempts kaydı veritabanından temizlendi.", rows)
+		}
+	}
+}
+
+// StartLoginAttemptsHousekeeping starts a background ticker (runs every 6 hours)
+func StartLoginAttemptsHousekeeping() {
+	go func() {
+		// Run initial cleanup at startup
+		CleanupExpiredLoginAttempts()
+		ticker := time.NewTicker(6 * time.Hour)
+		for range ticker.C {
+			CleanupExpiredLoginAttempts()
+		}
+	}()
 }

@@ -1615,7 +1615,9 @@ var (
 func StartMetricsCollector() {
 	go func() {
 		ticker := time.NewTicker(3 * time.Second)
+		stepCount := 0
 		for range ticker.C {
+			stepCount++
 			ramPct, _, _ := getHostMemoryUsage()
 			diskPct, _, _ := getHostDiskUsage()
 			cpuPct := 5
@@ -1626,6 +1628,11 @@ func StartMetricsCollector() {
 				if cpuPct > 100 {
 					cpuPct = 100
 				}
+			}
+
+			// Check ZFS storage pool usage threshold alerts every 30 seconds (every 10 steps)
+			if stepCount%10 == 0 {
+				go CheckDatastoreUsageAlerts()
 			}
 
 			point := MetricPoint{

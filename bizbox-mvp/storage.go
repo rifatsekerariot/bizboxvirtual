@@ -288,3 +288,19 @@ func handleDeleteDatastoreAPI(w http.ResponseWriter, r *http.Request) {
 	LogSystemEvent(getUsername(r), "Datastore Silme", poolName, "Başarılı")
 	w.WriteHeader(http.StatusOK)
 }
+
+// CheckDatastoreUsageAlerts monitors all ZFS storage pools and triggers pro-active alerts when capacity >= 85%
+func CheckDatastoreUsageAlerts() {
+	datastores, err := ListDatastores()
+	if err != nil {
+		return
+	}
+
+	for _, ds := range datastores {
+		if ds.UsedPercent >= 85 {
+			title := fmt.Sprintf("Kritik Depolama Doluluk Uyarısı (%%%d)", ds.UsedPercent)
+			msg := fmt.Sprintf("'%s' depolama havuzu %%85 doluluk eşiğini aştı! Mevcut: %s / %s (Kullanım: %%%d). Lütfen gereksiz verileri/snapshot'ları temizleyin veya depolama ekleyin.", ds.Name, ds.UsedStr, ds.TotalStr, ds.UsedPercent)
+			SendAlert("warning", title, msg)
+		}
+	}
+}

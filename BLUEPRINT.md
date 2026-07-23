@@ -92,7 +92,14 @@ bizboxvirtual/
 * **DB-backed State Persistence**: Failed attempts are stored in SQLite `login_attempts` table (`key`, `attempt_count`, `locked_until`). Restarting the service / binary auto-updates does **NOT** reset attempt counters or bypass lockouts.
 * **Username Lockout Policy**: Scoped per user (`user:<username>`). 5 consecutive failed attempts lock that specific user account for 15 minutes without impacting other users.
 * **NAT-Safe IP Protection Policy**: Scoped per client IP (`ip:<client_ip>`). To protect corporate networks behind shared NAT IPs from single-user lockouts, IP-level rate limiting uses a 20-attempt threshold before locking the IP.
+* **Automated Housekeeping Cleanup**: Background ticker (`StartLoginAttemptsHousekeeping`) purges expired, unlocked records older than 7 days every 6 hours to prevent database bloat.
 * **Proactive Security Alerts**: Lockouts trigger an immediate notification dispatch (`SendAlert`) to Webhooks, Telegram, and Email via `alerts.go`.
+
+---
+
+### H. ZFS Storage Pool Capacity Threshold Alerting (%85+) (`storage.go`)
+* **Proactive Capacity Monitoring**: `CheckDatastoreUsageAlerts` monitors all active ZFS storage pools every 30 seconds.
+* **85% Threshold Protection**: Triggers high-priority alerts (`SendAlert`) via Webhook, Telegram, and SMTP Email when pool usage reaches or exceeds **85%**, preventing ZFS Copy-on-Write (COW) block allocation failures and performance degradation before pools reach 100%.
 
 ### C. Role-Based Access Control (RBAC) (`auth.go` & `main.go`)
 * **Multi-User Roles**: Supports `admin` (full management), `operator` (VM/Network ops), and `viewer` (read-only monitoring). Viewer roles are strictly blocked from write endpoints (`POST`, `PUT`, `DELETE`) and interactive root consoles.
@@ -101,9 +108,10 @@ bizboxvirtual/
 * **Handshake Session Verification**: `handleConsoleWS` explicitly validates session tokens before upgrading HTTP connections to WebSockets (`upgrader.Upgrade`). Unauthenticated clients are rejected with `401 Unauthorized` before any interactive console session is established.
 * **RBAC Console Restriction**: `viewer` roles are prevented from establishing interactive terminal sessions to VMs (`403 Forbidden`).
 
-### E. Double-Layer CSRF Protection & SameSite Enforcement (`auth.go`)
-* **SameSite=Strict Cookie Enforcement**: Session cookies are configured with `SameSite=Strict`, `HttpOnly`, and `Secure` flags, preventing browsers from sending cookies on cross-site requests.
-* **Origin/Referer Validation**: State-modifying requests (`POST`, `PUT`, `DELETE`) verify `Origin` and `Referer` headers against the host server name, blocking cross-site request forgery attacks.
+### E. Double-Layer CSRF Protection & API Automation Exemption (`auth.go`)
+* **SameSite=Strict Cookie Enforcement**: Browser session cookies are configured with `SameSite=Strict`, `HttpOnly`, and `Secure` flags.
+* **Browser Origin/Referer Validation**: State-modifying requests (`POST`, `PUT`, `DELETE`) verify `Origin` and `Referer` headers against the host server name for browser session flows.
+* **CLI & Automation Exemption (`X-API-Key` / `Authorization: Bearer`)**: External automation scripts, CLI tools, and monitoring integrations authenticated via `X-API-Key` or `Authorization: Bearer <api_key>` are authenticated securely via API tokens and **exempt from browser Origin/Referer CSRF checks**, ensuring automated workflows are never blocked.
 
 ### F. L2 Bridge Isolation (`bridge-nf-call-iptables = 0`)
 * **Problem**: In Linux kernels, if `net.bridge.bridge-nf-call-iptables` is enabled, host-level `iptables` / `netfilter` rules process L2 bridge frames (VM-to-VM traffic on OVS tap interfaces), causing unexpected packet drops or security log pollution.
