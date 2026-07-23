@@ -20,10 +20,32 @@ echo "====== [1/4] Preparing ISO tree ======"
 rm -rf "$ISO_TREE"
 mkdir -p "$ISO_TREE/casper" "$ISO_TREE/boot/grub"
 
-KERNEL=$(basename "$(ls "$ROOTFS_DIR"/boot/vmlinuz-* | sort -V | tail -n1)")
-INITRD=$(basename "$(ls "$ROOTFS_DIR"/boot/initrd.img-* | sort -V | tail -n1)")
-cp "$ROOTFS_DIR/boot/$KERNEL" "$ISO_TREE/casper/vmlinuz"
-cp "$ROOTFS_DIR/boot/$INITRD" "$ISO_TREE/casper/initrd"
+# Robust Kernel & Initrd resolution with automatic fallback generation
+KERNEL_PATH=$(ls "$ROOTFS_DIR"/boot/vmlinuz-* 2>/dev/null | sort -V | tail -n1 || true)
+INITRD_PATH=$(ls "$ROOTFS_DIR"/boot/initrd.img-* "$ROOTFS_DIR"/boot/initrd* 2>/dev/null | sort -V | tail -n1 || true)
+
+if [ -z "$KERNEL_PATH" ] || [ ! -f "$KERNEL_PATH" ]; then
+  echo "Hata: /boot/vmlinuz-* imajı bulunamadı!"
+  exit 1
+fi
+
+if [ -z "$INITRD_PATH" ] || [ ! -f "$INITRD_PATH" ]; then
+  echo "Bilgi: initrd.img dosyası bulunamadı, chroot içinde update-initramfs çalıştırılıyor..."
+  mount --bind /dev "$ROOTFS_DIR/dev" 2>/dev/null || true
+  mount -t proc proc "$ROOTFS_DIR/proc" 2>/dev/null || true
+  mount -t sysfs sysfs "$ROOTFS_DIR/sys" 2>/dev/null || true
+  chroot "$ROOTFS_DIR" /bin/bash -c "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin update-initramfs -c -k all" || true
+  umount -lf "$ROOTFS_DIR/dev" 2>/dev/null || true
+  umount -lf "$ROOTFS_DIR/proc" 2>/dev/null || true
+  umount -lf "$ROOTFS_DIR/sys" 2>/dev/null || true
+  INITRD_PATH=$(ls "$ROOTFS_DIR"/boot/initrd.img-* "$ROOTFS_DIR"/boot/initrd* 2>/dev/null | sort -V | tail -n1 || true)
+fi
+
+echo "Kernel: $KERNEL_PATH"
+echo "Initrd: $INITRD_PATH"
+
+cp "$KERNEL_PATH" "$ISO_TREE/casper/vmlinuz"
+cp "$INITRD_PATH" "$ISO_TREE/casper/initrd"
 
 echo "====== [2/4] Compressing rootfs to squashfs (xz, this takes a while) ======"
 mksquashfs "$ROOTFS_DIR" "$ISO_TREE/casper/filesystem.squashfs" \

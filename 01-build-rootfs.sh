@@ -95,6 +95,7 @@ EOF
     linux-image-generic \
     linux-modules-extra-generic \
     linux-firmware \
+    initramfs-tools \
     kmod \
     pciutils \
     lsscsi \
@@ -122,6 +123,9 @@ EOF
     efibootmgr \
     systemd-resolved dnsmasq-base apparmor \
     grub-pc-bin grub-efi-amd64 grub-efi-amd64-signed shim-signed || apt-get install -y --no-install-recommends linux-image-generic linux-firmware
+
+  # Ensure initramfs is compiled for kernel
+  update-initramfs -c -k all 2>/dev/null || update-initramfs -u -k all 2>/dev/null || true
 
   apt-get clean
   rm -rf /var/lib/apt/lists/*
